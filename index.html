@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phenn Map Annotation</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/src/styles/main.css" />
+  <link rel="icon" href="/favicon.ico" />
+</head>
+<body>
+  <div id="app">
+    <header id="toolbar">
+      <h1>Phenn Map Annotation</h1>
+      <div id="toolbar-actions">
+        <button id="toggle-background" type="button">Hide Background</button>
+        <button id="undo-btn" type="button">Undo</button>
+        <button id="save-btn" type="button">Save</button>
+      </div>
+    </header>
+    <main id="workspace">
+      <div id="map-container"></div>
+      <aside id="sidebar">
+        <section id="mode-selector">
+          <h2>Mode</h2>
+          <div class="mode-buttons">
+            <button class="mode-btn active" data-mode="coastline">Coastline</button>
+            <button class="mode-btn" data-mode="tower">Towers</button>
+            <button class="mode-btn" data-mode="settlement">Settlements</button>
+            <button class="mode-btn" data-mode="road">Roads</button>
+          </div>
+        </section>
+        <section id="mode-options"></section>
+        <section id="status-display">
+          <h2>Status</h2>
+          <p id="status-text">Click on the map to add coastline points.</p>
+        </section>
+        <section id="action-buttons">
+          <button id="commit-btn" type="button" disabled>Commit</button>
+          <button id="cancel-btn" type="button" disabled>Cancel</button>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <div id="dialog-container"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
