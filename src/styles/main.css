@@ -233,13 +233,18 @@ button:disabled {
   width: 100%;
 }
 
-.option-group select {
+.option-group select,
+.option-group input[type="text"] {
   padding: 0.375rem 0.5rem;
   background: #333;
   border: 1px solid #555;
   border-radius: 4px;
   color: #e0e0e0;
   font-size: 0.875rem;
+}
+
+.option-group input[type="text"] {
+  width: 100%;
 }
 
 .option-group input[type="range"] {
@@ -262,4 +267,13 @@ button:disabled {
   display: flex;
   align-items: center;
   cursor: pointer;
+}
+
+/* Draggable point cursor */
+.leaflet-interactive.draggable-point {
+  cursor: grab;
+}
+
+.leaflet-interactive.draggable-point:active {
+  cursor: grabbing;
 }

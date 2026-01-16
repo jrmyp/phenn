@@ -4,14 +4,12 @@ import { Settlement } from '../types';
 import { ROAD_STYLE, SETTLEMENT_SIZE } from '../config/constants';
 
 export class RoadMode {
-  private map: L.Map;
   private appState: AppState;
   private roadsLayer: L.LayerGroup;
   private highlightLayer: L.LayerGroup;
   private active = false;
 
   constructor(map: L.Map, appState: AppState) {
-    this.map = map;
     this.appState = appState;
 
     // Create layer groups for roads (below settlements) and highlights

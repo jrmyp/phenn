@@ -6,10 +6,10 @@ A TypeScript-based map annotation tool for the Phenn role-playing game world. Al
 
 ## Features
 
-- **Coastline Drawing**: Trace the coastline by clicking points on the map. Close the loop to complete.
-- **Towers**: Place towers of 9 different types (Aquagen, Aerogen, Petrogen, Biogen, Thermogen, Photogen, Keraunogen, Kinegen, Piezogen) with configurable power levels.
-- **Settlements**: Add named settlements with variable sizes (size 0 = hollow circle, 1-5 = filled circles).
-- **Roads**: Connect settlements with roads (safe = solid line, unsafe = dotted line).
+- **Coastline Drawing & Editing**: Trace the coastline by clicking points, close the loop, then edit with replace segment, remove point, or move point modes.
+- **Towers**: Place towers of 9 different types (Aquagen, Aerogen, Petrogen, Biogen, Thermogen, Photogen, Keraunogen, Kinegen, Piezogen) with configurable power levels. Click to select and edit type/power in sidebar. Ctrl+drag to move, Shift+click to delete.
+- **Settlements**: Add settlements with variable sizes (size 0 = hollow "Empty" marker, 1-5 = filled circles). Click to select and edit name/size in sidebar. Ctrl+drag to move, Shift+click to delete.
+- **Roads**: Connect settlements with roads (safe = solid line, unsafe = dotted line). Alt+click road to toggle safe/unsafe, Shift+click to delete.
 - **Background Toggle**: Show/hide the reference map image; when hidden, displays ocean (pale blue) and continent (cream) fill.
 - **Undo**: Ctrl+Z to undo actions.
 - **Persistence**: Save annotations to JSON file.
@@ -78,16 +78,13 @@ phenn/
 - [x] Map display with pan/zoom
 - [x] Background image toggle
 - [x] Coastline mode - add points, close loop
+- [x] Coastline editing - replace segments, remove points, move points
 - [x] Tower mode - place towers with type and power selection
 - [x] Settlement mode - place settlements with name and size
 - [x] Road mode - connect settlements with safe/unsafe roads
 - [x] Ocean/continent fill when background hidden
 - [x] Undo support (Ctrl+Z)
 - [x] JSON export/import persistence
-
-### Planned
-
-- [ ] Coastline editing - modify existing coastline segments
-- [ ] Tower/settlement dragging - move existing markers
-- [ ] Delete individual annotations
-- [ ] Road properties editing
+- [x] Tower/settlement selection and editing via sidebar
+- [x] Tower/settlement dragging (Ctrl+drag)
+- [x] Delete annotations (Shift+click)

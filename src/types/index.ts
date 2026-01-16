@@ -100,6 +100,9 @@ export interface AppStateData {
   // Road placement state
   selectedRoadSafe: boolean;
   pendingRoadStartId: string | null;  // First settlement clicked when creating road
+  // Selection state for editing
+  selectedTowerId: string | null;
+  selectedSettlementId: string | null;
 }
 
 // ============ Event Types ============
@@ -130,7 +133,9 @@ export type ActionType =
   | 'REMOVE_ROAD'
   | 'UPDATE_ROAD'
   | 'SET_ROAD_SAFE'
-  | 'SET_PENDING_ROAD_START';
+  | 'SET_PENDING_ROAD_START'
+  | 'SELECT_TOWER'
+  | 'SELECT_SETTLEMENT';
 
 export interface StateChangeEvent<T = unknown> {
   type: ActionType;

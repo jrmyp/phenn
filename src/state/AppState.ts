@@ -42,6 +42,8 @@ function createInitialState(): AppStateData {
     selectedSettlementSize: SETTLEMENT_SIZE.defaultSize,
     selectedRoadSafe: true,
     pendingRoadStartId: null,
+    selectedTowerId: null,
+    selectedSettlementId: null,
   };
 }
 
@@ -175,7 +177,76 @@ export class AppState {
         }
 
         // For replacement edits, apply the replacement logic
-        // This is simplified - full implementation would handle path replacement
+        if (state.pendingEdit.type === 'replace' &&
+            state.pendingEdit.startAnchorId &&
+            state.pendingEdit.endAnchorId) {
+          const points = state.coastline.points;
+          const n = points.length;
+          const startIdx = points.findIndex(p => p.id === state.pendingEdit!.startAnchorId);
+          const endIdx = points.findIndex(p => p.id === state.pendingEdit!.endAnchorId);
+
+          if (startIdx === -1 || endIdx === -1) {
+            return { ...state, pendingEdit: null };
+          }
+
+          // Determine which direction we're replacing (shorter path)
+          const pathCW: number[] = [];
+          let i = (startIdx + 1) % n;
+          while (i !== endIdx) {
+            pathCW.push(i);
+            i = (i + 1) % n;
+          }
+
+          const pathCCW: number[] = [];
+          i = (startIdx - 1 + n) % n;
+          while (i !== endIdx) {
+            pathCCW.push(i);
+            i = (i - 1 + n) % n;
+          }
+
+          const useCW = pathCW.length <= pathCCW.length;
+
+          // Build new points array
+          const newPoints: Point[] = [];
+          const newPendingPoints = state.pendingEdit.points;
+
+          if (useCW) {
+            // Going clockwise: keep points before start, insert new points after start,
+            // then skip to end and continue
+            for (let j = 0; j <= startIdx; j++) {
+              newPoints.push(points[j]);
+            }
+            // Insert new points
+            newPoints.push(...newPendingPoints);
+            // Continue from end to the end of array
+            for (let j = endIdx; j < n; j++) {
+              newPoints.push(points[j]);
+            }
+          } else {
+            // Going counter-clockwise: more complex - need to reverse the new points
+            // Build: end..start_of_array, then new points (reversed), then start..end_of_array
+            for (let j = 0; j <= endIdx; j++) {
+              newPoints.push(points[j]);
+            }
+            // Insert new points in reverse order (since we're going CCW)
+            const reversedNew = [...newPendingPoints].reverse();
+            newPoints.push(...reversedNew);
+            // Continue from start to end of array
+            for (let j = startIdx; j < n; j++) {
+              newPoints.push(points[j]);
+            }
+          }
+
+          return {
+            ...state,
+            coastline: {
+              ...state.coastline,
+              points: newPoints,
+            },
+            pendingEdit: null,
+          };
+        }
+
         return {
           ...state,
           pendingEdit: null,
@@ -350,6 +421,12 @@ export class AppState {
 
       case 'SET_PENDING_ROAD_START':
         return { ...state, pendingRoadStartId: payload as string | null };
+
+      case 'SELECT_TOWER':
+        return { ...state, selectedTowerId: payload as string | null };
+
+      case 'SELECT_SETTLEMENT':
+        return { ...state, selectedSettlementId: payload as string | null };
 
       default:
         return state;

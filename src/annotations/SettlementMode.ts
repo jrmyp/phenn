@@ -10,8 +10,11 @@ export class SettlementMode {
   private appState: AppState;
   private settlementsLayer: L.LayerGroup;
   private clickHandler: (e: L.LeafletMouseEvent) => void;
+  private mouseMoveHandler: (e: L.LeafletMouseEvent) => void;
+  private mouseUpHandler: (e: L.LeafletMouseEvent) => void;
   private active = false;
   private externalClickHandler: SettlementClickHandler | null = null;
+  private draggingSettlementId: string | null = null;
 
   constructor(map: L.Map, appState: AppState) {
     this.map = map;
@@ -20,8 +23,10 @@ export class SettlementMode {
     // Create layer group for settlements
     this.settlementsLayer = L.layerGroup().addTo(map);
 
-    // Set up click handler
+    // Set up event handlers
     this.clickHandler = this.handleMapClick.bind(this);
+    this.mouseMoveHandler = this.handleMouseMove.bind(this);
+    this.mouseUpHandler = this.handleMouseUp.bind(this);
 
     // Subscribe to state changes to re-render
     this.appState.subscribe(() => this.render());
@@ -39,6 +44,8 @@ export class SettlementMode {
     if (this.active) return;
     this.active = true;
     this.map.on('click', this.clickHandler);
+    this.map.on('mousemove', this.mouseMoveHandler);
+    this.map.on('mouseup', this.mouseUpHandler);
     this.updateStatus();
   }
 
@@ -46,14 +53,45 @@ export class SettlementMode {
     if (!this.active) return;
     this.active = false;
     this.map.off('click', this.clickHandler);
+    this.map.off('mousemove', this.mouseMoveHandler);
+    this.map.off('mouseup', this.mouseUpHandler);
+    this.draggingSettlementId = null;
   }
 
   private handleMapClick(e: L.LeafletMouseEvent): void {
+    // Don't add settlement if we're dragging
+    if (this.draggingSettlementId) return;
+
+    // Clear selection when clicking on map background
+    this.appState.dispatch('SELECT_SETTLEMENT', null);
+
     const x = e.latlng.lng;
     const y = e.latlng.lat;
 
-    // Add settlement at click location
+    // Add settlement at click location (with empty name)
     this.appState.dispatch('ADD_SETTLEMENT', { x, y });
+    this.updateStatus();
+  }
+
+  private handleMouseMove(e: L.LeafletMouseEvent): void {
+    if (!this.draggingSettlementId) return;
+
+    const x = e.latlng.lng;
+    const y = e.latlng.lat;
+
+    // Update settlement position
+    const state = this.appState.getState();
+    const settlement = state.settlements.settlements.find(s => s.id === this.draggingSettlementId);
+    if (settlement) {
+      this.appState.dispatch('UPDATE_SETTLEMENT', { ...settlement, x, y });
+    }
+  }
+
+  private handleMouseUp(_e: L.LeafletMouseEvent): void {
+    if (!this.draggingSettlementId) return;
+
+    this.draggingSettlementId = null;
+    this.map.dragging.enable();
     this.updateStatus();
   }
 
@@ -73,19 +111,25 @@ export class SettlementMode {
     settlements.forEach((settlement) => {
       const radius = this.getRadius(settlement.size);
       const isHollow = settlement.size === 0;
+      const isSelected = state.selectedSettlementId === settlement.id;
 
       const circle = L.circleMarker([settlement.y, settlement.x], {
         radius,
-        color: SETTLEMENT_SIZE.strokeColor,
-        weight: SETTLEMENT_SIZE.strokeWidth,
+        color: isSelected ? '#00ff00' : SETTLEMENT_SIZE.strokeColor,
+        weight: isSelected ? 3 : SETTLEMENT_SIZE.strokeWidth,
         fillColor: SETTLEMENT_SIZE.fillColor,
         fillOpacity: isHollow ? 0 : 1,
       });
 
       // Add tooltip with settlement info
-      const tooltipText = settlement.name
-        ? `${settlement.name} (size ${settlement.size})`
-        : `Settlement (size ${settlement.size})`;
+      let tooltipText: string;
+      if (settlement.name) {
+        tooltipText = `${settlement.name} (size ${settlement.size})`;
+      } else if (settlement.size === 0) {
+        tooltipText = 'Empty';
+      } else {
+        tooltipText = `Settlement (size ${settlement.size})`;
+      }
       circle.bindTooltip(tooltipText, { permanent: false, direction: 'top' });
 
       // Add click handler for selecting/removing settlements
@@ -93,7 +137,7 @@ export class SettlementMode {
         L.DomEvent.stopPropagation(e);
 
         // If external handler is set (e.g., road mode), use it for plain clicks
-        if (this.externalClickHandler && !e.originalEvent.shiftKey && !e.originalEvent.altKey) {
+        if (this.externalClickHandler && !e.originalEvent.shiftKey) {
           this.externalClickHandler(settlement);
           return;
         }
@@ -101,9 +145,19 @@ export class SettlementMode {
         if (e.originalEvent.shiftKey) {
           // Shift+click to remove
           this.appState.dispatch('REMOVE_SETTLEMENT', settlement.id);
-        } else if (e.originalEvent.altKey) {
-          // Alt+click to edit name
-          this.promptForName(settlement);
+          this.appState.dispatch('SELECT_SETTLEMENT', null);
+        } else {
+          // Plain click to select
+          this.appState.dispatch('SELECT_SETTLEMENT', settlement.id);
+        }
+      });
+
+      // Add mousedown handler for Ctrl+drag to move
+      circle.on('mousedown', (e) => {
+        L.DomEvent.stopPropagation(e);
+        if (e.originalEvent.ctrlKey) {
+          this.draggingSettlementId = settlement.id;
+          this.map.dragging.disable();
         }
       });
 
@@ -130,16 +184,6 @@ export class SettlementMode {
     });
   }
 
-  private promptForName(settlement: Settlement): void {
-    const newName = prompt('Settlement name:', settlement.name);
-    if (newName !== null) {
-      this.appState.dispatch('UPDATE_SETTLEMENT', {
-        ...settlement,
-        name: newName,
-      });
-    }
-  }
-
   private updateStatus(message?: string): void {
     const statusEl = document.getElementById('status-text');
     if (!statusEl) return;
@@ -153,6 +197,6 @@ export class SettlementMode {
     const count = state.settlements.settlements.length;
     const size = state.selectedSettlementSize;
 
-    statusEl.textContent = `Click to place settlement (size: ${size}). ${count} settlement(s) placed. Shift+click to remove, Alt+click to rename.`;
+    statusEl.textContent = `Click to place settlement (size: ${size}). ${count} settlement(s). Click to select, Shift+click remove, Ctrl+drag move.`;
   }
 }

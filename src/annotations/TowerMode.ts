@@ -8,7 +8,10 @@ export class TowerMode {
   private appState: AppState;
   private towersLayer: L.LayerGroup;
   private clickHandler: (e: L.LeafletMouseEvent) => void;
+  private mouseMoveHandler: (e: L.LeafletMouseEvent) => void;
+  private mouseUpHandler: (e: L.LeafletMouseEvent) => void;
   private active = false;
+  private draggingTowerId: string | null = null;
 
   constructor(map: L.Map, appState: AppState) {
     this.map = map;
@@ -17,8 +20,10 @@ export class TowerMode {
     // Create layer group for towers
     this.towersLayer = L.layerGroup().addTo(map);
 
-    // Set up click handler
+    // Set up event handlers
     this.clickHandler = this.handleMapClick.bind(this);
+    this.mouseMoveHandler = this.handleMouseMove.bind(this);
+    this.mouseUpHandler = this.handleMouseUp.bind(this);
 
     // Subscribe to state changes to re-render
     this.appState.subscribe(() => this.render());
@@ -31,6 +36,8 @@ export class TowerMode {
     if (this.active) return;
     this.active = true;
     this.map.on('click', this.clickHandler);
+    this.map.on('mousemove', this.mouseMoveHandler);
+    this.map.on('mouseup', this.mouseUpHandler);
     this.updateStatus();
   }
 
@@ -38,14 +45,45 @@ export class TowerMode {
     if (!this.active) return;
     this.active = false;
     this.map.off('click', this.clickHandler);
+    this.map.off('mousemove', this.mouseMoveHandler);
+    this.map.off('mouseup', this.mouseUpHandler);
+    this.draggingTowerId = null;
   }
 
   private handleMapClick(e: L.LeafletMouseEvent): void {
+    // Don't add tower if we're dragging
+    if (this.draggingTowerId) return;
+
+    // Clear selection when clicking on map background
+    this.appState.dispatch('SELECT_TOWER', null);
+
     const x = e.latlng.lng;
     const y = e.latlng.lat;
 
     // Add tower at click location
     this.appState.dispatch('ADD_TOWER', { x, y });
+    this.updateStatus();
+  }
+
+  private handleMouseMove(e: L.LeafletMouseEvent): void {
+    if (!this.draggingTowerId) return;
+
+    const x = e.latlng.lng;
+    const y = e.latlng.lat;
+
+    // Update tower position
+    const state = this.appState.getState();
+    const tower = state.towers.towers.find(t => t.id === this.draggingTowerId);
+    if (tower) {
+      this.appState.dispatch('UPDATE_TOWER', { ...tower, x, y });
+    }
+  }
+
+  private handleMouseUp(_e: L.LeafletMouseEvent): void {
+    if (!this.draggingTowerId) return;
+
+    this.draggingTowerId = null;
+    this.map.dragging.enable();
     this.updateStatus();
   }
 
@@ -76,9 +114,10 @@ export class TowerMode {
         [tower.y + height, tower.x + width / 2],  // Top-right
       ];
 
+      const isSelected = state.selectedTowerId === tower.id;
       const rect = L.rectangle(bounds, {
-        color: '#000000',
-        weight: 1,
+        color: isSelected ? '#00ff00' : '#000000',
+        weight: isSelected ? 3 : 1,
         fillColor: color,
         fillOpacity: 0.8,
       });
@@ -92,9 +131,21 @@ export class TowerMode {
       // Add click handler for selecting/removing towers
       rect.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
-        // For now, right-click or shift-click to remove
         if (e.originalEvent.shiftKey) {
           this.appState.dispatch('REMOVE_TOWER', tower.id);
+          this.appState.dispatch('SELECT_TOWER', null);
+        } else {
+          // Select the tower
+          this.appState.dispatch('SELECT_TOWER', tower.id);
+        }
+      });
+
+      // Add mousedown handler for Ctrl+drag to move
+      rect.on('mousedown', (e) => {
+        L.DomEvent.stopPropagation(e);
+        if (e.originalEvent.ctrlKey) {
+          this.draggingTowerId = tower.id;
+          this.map.dragging.disable();
         }
       });
 
@@ -116,7 +167,7 @@ export class TowerMode {
     const type = state.selectedTowerType;
     const power = state.selectedTowerPower;
 
-    statusEl.textContent = `Click to place ${type} tower (power: ${power}). ${towerCount} tower(s) placed. Shift+click tower to remove.`;
+    statusEl.textContent = `Click to place ${type} tower (power: ${power}). ${towerCount} tower(s). Click to select, Shift+click remove, Ctrl+drag move.`;
   }
 
   getTowerAtLocation(x: number, y: number): Tower | null {
