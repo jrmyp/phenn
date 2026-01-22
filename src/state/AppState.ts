@@ -11,8 +11,12 @@ import {
   TowerType,
   Settlement,
   Road,
+  SimulatorHyperparameters,
+  SimulatorClickedPoint,
+  SimulatorLayerType,
+  RefinementPoint,
 } from '../types';
-import { TOWER_SIZE, SETTLEMENT_SIZE } from '../config/constants';
+import { TOWER_SIZE, SETTLEMENT_SIZE, SIMULATOR_DEFAULTS } from '../config/constants';
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 11);
@@ -44,6 +48,10 @@ function createInitialState(): AppStateData {
     pendingRoadStartId: null,
     selectedTowerId: null,
     selectedSettlementId: null,
+    simulatorHyperparameters: { ...SIMULATOR_DEFAULTS },
+    simulatorActiveLayer: null,
+    simulatorClickedPoint: null,
+    simulatorRefinementPoints: [],
   };
 }
 
@@ -427,6 +435,43 @@ export class AppState {
 
       case 'SELECT_SETTLEMENT':
         return { ...state, selectedSettlementId: payload as string | null };
+
+      // Simulator actions
+      case 'SET_SIMULATOR_HYPERPARAMETERS':
+        return { ...state, simulatorHyperparameters: payload as SimulatorHyperparameters };
+
+      case 'SET_SIMULATOR_LAYER':
+        return { ...state, simulatorActiveLayer: payload as SimulatorLayerType };
+
+      case 'SET_SIMULATOR_CLICKED':
+        return { ...state, simulatorClickedPoint: payload as SimulatorClickedPoint | null };
+
+      case 'ADD_REFINEMENT_POINT': {
+        const { x, y } = payload as { x: number; y: number };
+        const newPoint: RefinementPoint = { id: generateId(), x, y, level: 1 };
+        return {
+          ...state,
+          simulatorRefinementPoints: [...state.simulatorRefinementPoints, newPoint],
+        };
+      }
+
+      case 'REMOVE_REFINEMENT_POINT': {
+        const pointId = payload as string;
+        return {
+          ...state,
+          simulatorRefinementPoints: state.simulatorRefinementPoints.filter(p => p.id !== pointId),
+        };
+      }
+
+      case 'UPDATE_REFINEMENT_POINT': {
+        const { id, level } = payload as { id: string; level: 1 | 2 };
+        return {
+          ...state,
+          simulatorRefinementPoints: state.simulatorRefinementPoints.map(p =>
+            p.id === id ? { ...p, level } : p
+          ),
+        };
+      }
 
       default:
         return state;

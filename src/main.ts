@@ -4,9 +4,10 @@ import { CoastlineMode } from './annotations/CoastlineMode';
 import { TowerMode } from './annotations/TowerMode';
 import { SettlementMode } from './annotations/SettlementMode';
 import { RoadMode } from './annotations/RoadMode';
+import { SimulatorMode } from './annotations/SimulatorMode';
 import { loadFromDataFolder, createSaveData, downloadJson } from './utils/persistence';
-import { TowerType } from './types';
-import { TOWER_SIZE, SETTLEMENT_SIZE } from './config/constants';
+import { TowerType, SimulatorHyperparameters, SimulatorClickedPoint, SimulatorLayerType } from './types';
+import { TOWER_SIZE, SETTLEMENT_SIZE, DIMENSION_NAMES, TOWER_COLORS } from './config/constants';
 
 // Initialize the application
 async function init(): Promise<void> {
@@ -31,6 +32,7 @@ async function init(): Promise<void> {
   const towerMode = new TowerMode(map, appState);
   const roadMode = new RoadMode(map, appState);  // Roads below settlements
   const settlementMode = new SettlementMode(map, appState);
+  const simulatorMode = new SimulatorMode(map, appState);
 
   // Start with coastline mode active
   coastlineMode.activate();
@@ -55,6 +57,7 @@ async function init(): Promise<void> {
       towerMode.deactivate();
       settlementMode.deactivate();
       roadMode.deactivate();
+      simulatorMode.deactivate();
       settlementMode.setClickHandler(null);
 
       if (mode === 'coastline') {
@@ -74,6 +77,17 @@ async function init(): Promise<void> {
         roadMode.activate();
         settlementMode.setClickHandler((s) => roadMode.handleSettlementClick(s));
         showModeOptions('road');
+      } else if (mode === 'simulator') {
+        appState.dispatch('SET_MODE', 'simulator');
+        simulatorMode.activate();
+        showModeOptions('simulator', simulatorMode);
+        // Hide background by default in simulator mode for better heatmap visibility
+        if (mapManager.isBackgroundVisible()) {
+          mapManager.setBackgroundVisible(false);
+          const bgBtn = document.getElementById('toggle-background') as HTMLButtonElement;
+          if (bgBtn) bgBtn.textContent = 'Show Background';
+          appState.dispatch('SET_BACKGROUND_VISIBLE', false);
+        }
       }
     });
   });
@@ -127,6 +141,7 @@ async function init(): Promise<void> {
   // Track previous selection state for UI updates
   let prevSelectedTowerId: string | null = null;
   let prevSelectedSettlementId: string | null = null;
+  let prevSimulatorClickedPoint: SimulatorClickedPoint | null = null;
 
   // Update commit/cancel button states and refresh UI based on state changes
   appState.subscribe(() => {
@@ -164,6 +179,12 @@ async function init(): Promise<void> {
       prevSelectedSettlementId = state.selectedSettlementId;
       showModeOptions('settlement');
     }
+
+    // Refresh simulator field display when clicked point changes
+    if (state.currentMode === 'simulator' && state.simulatorClickedPoint !== prevSimulatorClickedPoint) {
+      prevSimulatorClickedPoint = state.simulatorClickedPoint;
+      updateSimulatorFieldDisplay(simulatorMode);
+    }
   });
 
   // Initialize mode options UI
@@ -180,7 +201,7 @@ async function init(): Promise<void> {
   }
 }
 
-function showModeOptions(mode: string): void {
+function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
   const optionsEl = document.getElementById('mode-options');
   if (!optionsEl) return;
 
@@ -408,7 +429,172 @@ function showModeOptions(mode: string): void {
     safeCheckbox.addEventListener('change', () => {
       appState.dispatch('SET_ROAD_SAFE', safeCheckbox.checked);
     });
+  } else if (mode === 'simulator') {
+    const state = appState.getState();
+    const params = state.simulatorHyperparameters;
+    const activeLayer = state.simulatorActiveLayer;
+
+    // Build layer buttons HTML for individual dimensions
+    const dimensionButtonsHtml = DIMENSION_NAMES.map((name, idx) => {
+      const typeName = name.toLowerCase();
+      const color = TOWER_COLORS[typeName];
+      const isActive = activeLayer === idx;
+      return `<button class="layer-btn ${isActive ? 'active' : ''}" data-layer="${idx}" style="border-color: ${color}">${name}</button>`;
+    }).join('');
+
+    // Special layer buttons
+    const specialLayers: { key: SimulatorLayerType; label: string; color: string }[] = [
+      { key: 'total', label: 'Total', color: '#888888' },
+      { key: 'dominant', label: 'Dominant', color: '#ffffff' },
+      { key: 'dominant-safe', label: 'Safe Only', color: '#aaaaaa' },
+      { key: 'contributor-count', label: 'Contributors', color: '#ff00ff' },
+    ];
+    const specialButtonsHtml = specialLayers.map(layer => {
+      const isActive = activeLayer === layer.key;
+      return `<button class="layer-btn ${isActive ? 'active' : ''}" data-layer="${layer.key}" style="border-color: ${layer.color}">${layer.label}</button>`;
+    }).join('');
+
+    optionsEl.innerHTML = `
+      <h2>Harmonic Simulator</h2>
+      <div class="option-group">
+        <label>Layer:</label>
+        <div class="layer-buttons">
+          <button class="layer-btn ${activeLayer === null ? 'active' : ''}" data-layer="none">None</button>
+          ${specialButtonsHtml}
+        </div>
+        <div class="layer-buttons">
+          ${dimensionButtonsHtml}
+        </div>
+      </div>
+      <div class="option-group">
+        <label>Background: <span id="bg-value">${params.backgroundValue}</span></label>
+        <input type="range" id="sim-background" min="0" max="100" value="${params.backgroundValue}" />
+      </div>
+      <div class="option-group">
+        <label>Distance falloff: <span id="damping-value">${params.distanceDamping.toFixed(1)}</span></label>
+        <input type="range" id="sim-damping" min="2" max="40" step="1" value="${params.distanceDamping * 10}" />
+      </div>
+      <div class="option-group">
+        <label>Dampening strength: <span id="dampening-strength-value">${params.dampeningStrength.toFixed(1)}</span></label>
+        <input type="range" id="sim-dampening-strength" min="0" max="200" value="${params.dampeningStrength * 10}" />
+      </div>
+      <div id="field-display" class="field-display">
+        <p class="mode-hint">Click to inspect. Alt+click to add/remove refinement zone.</p>
+      </div>
+    `;
+
+    // Wire up layer buttons
+    const layerButtons = optionsEl.querySelectorAll('.layer-btn');
+    layerButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const layerVal = (btn as HTMLElement).dataset.layer;
+        let newLayer: SimulatorLayerType;
+        if (layerVal === 'none') {
+          newLayer = null;
+        } else if (layerVal === 'total' || layerVal === 'dominant' || layerVal === 'dominant-safe' || layerVal === 'contributor-count') {
+          newLayer = layerVal;
+        } else {
+          newLayer = parseInt(layerVal!, 10);
+        }
+        appState.dispatch('SET_SIMULATOR_LAYER', newLayer);
+        // Update active state visually
+        layerButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    // Wire up hyperparameter sliders
+    const bgSlider = document.getElementById('sim-background') as HTMLInputElement;
+    const bgValue = document.getElementById('bg-value') as HTMLSpanElement;
+    bgSlider.addEventListener('input', () => {
+      const val = parseInt(bgSlider.value, 10);
+      bgValue.textContent = val.toString();
+      updateSimulatorParams({ backgroundValue: val });
+    });
+
+    const dampingSlider = document.getElementById('sim-damping') as HTMLInputElement;
+    const dampingValue = document.getElementById('damping-value') as HTMLSpanElement;
+    dampingSlider.addEventListener('input', () => {
+      const val = parseInt(dampingSlider.value, 10) / 10;
+      dampingValue.textContent = val.toFixed(1);
+      updateSimulatorParams({ distanceDamping: val });
+    });
+
+    const dampeningStrengthSlider = document.getElementById('sim-dampening-strength') as HTMLInputElement;
+    const dampeningStrengthValue = document.getElementById('dampening-strength-value') as HTMLSpanElement;
+    dampeningStrengthSlider.addEventListener('input', () => {
+      const val = parseInt(dampeningStrengthSlider.value, 10) / 10;
+      dampeningStrengthValue.textContent = val.toFixed(1);
+      updateSimulatorParams({ dampeningStrength: val });
+    });
+
+    // Update field display if there's already a clicked point
+    if (simulatorModeRef) {
+      updateSimulatorFieldDisplay(simulatorModeRef);
+    }
   }
+}
+
+function updateSimulatorParams(partial: Partial<SimulatorHyperparameters>): void {
+  const current = appState.getState().simulatorHyperparameters;
+  appState.dispatch('SET_SIMULATOR_HYPERPARAMETERS', { ...current, ...partial });
+}
+
+function updateSimulatorFieldDisplay(simulatorModeRef: SimulatorMode): void {
+  const fieldDisplay = document.getElementById('field-display');
+  if (!fieldDisplay) return;
+
+  const state = appState.getState();
+  const clicked = state.simulatorClickedPoint;
+
+  if (!clicked) {
+    fieldDisplay.innerHTML = '<p class="mode-hint">Click to inspect. Alt+click to add/remove refinement zone.</p>';
+    return;
+  }
+
+  const dominant = simulatorModeRef.getDominantDimension(clicked.field);
+  const total = simulatorModeRef.getTotalIntensity(clicked.field);
+
+  // Build field values grid
+  const fieldValuesHtml = clicked.field.dimensions.map((val, idx) => {
+    const name = DIMENSION_NAMES[idx];
+    const typeName = name.toLowerCase();
+    const color = TOWER_COLORS[typeName];
+    return `<div class="field-value" style="border-left: 3px solid ${color}"><span class="field-name">${name}</span><span class="field-num">${val.toFixed(1)}</span></div>`;
+  }).join('');
+
+  // Build contributing towers list
+  const contributions = clicked.contributions || [];
+  const contributorsHtml = contributions.length > 0
+    ? contributions.map(c => {
+        const typeName = c.tower.type.charAt(0).toUpperCase() + c.tower.type.slice(1);
+        const color = TOWER_COLORS[c.tower.type];
+        const dampening = c.dampening ?? 1;
+        const dampPct = Math.round(dampening * 100);
+        const dampenedVal = c.dampenedContribution ?? c.contribution;
+        const dampenedStr = dampening < 0.99
+          ? ` <span class="dampened-arrow">&rarr;</span> ${dampenedVal.toFixed(1)}`
+          : '';
+        const dampBadge = dampening < 0.99
+          ? `<span class="dampening-badge">${dampPct}%</span>`
+          : '';
+        return `<div class="contributor-item" style="border-left: 3px solid ${color}">
+          <span class="contributor-type">${typeName}</span>
+          <span class="contributor-details">${c.contribution.toFixed(1)}${dampenedStr} @ ${Math.round(c.distance)}px ${dampBadge}</span>
+        </div>`;
+      }).join('')
+    : '<div class="mode-hint">No contributing towers</div>';
+
+  fieldDisplay.innerHTML = `
+    <h3>Field at (${Math.round(clicked.x)}, ${Math.round(clicked.y)})</h3>
+    <div class="field-grid">${fieldValuesHtml}</div>
+    <div class="field-summary">
+      <span>Dominant: <strong style="color: ${dominant.color}">${dominant.name}</strong></span>
+      <span>Total: <strong>${total.toFixed(1)}</strong></span>
+    </div>
+    <h4>Contributing Towers (${contributions.length})</h4>
+    <div class="contributors-list">${contributorsHtml}</div>
+  `;
 }
 
 function updateStatus(message: string): void {

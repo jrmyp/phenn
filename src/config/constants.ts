@@ -88,3 +88,54 @@ export const MAP_FILL = {
   ocean: '#cce5ff',     // Pale blue
   continent: '#fff8dc', // Cream
 };
+
+// Simulator configuration
+export const SIMULATOR_DEFAULTS = {
+  backgroundValue: 10,
+  distanceDamping: 1.2,
+  dampeningStrength: 15.0,
+  minDampening: 0.1,
+};
+
+// Grid resolution for heatmap sampling (pixels between sample points)
+export const HEATMAP_GRID_RESOLUTION = 40;
+
+// Maximum number of tower candidates to consider for field calculation
+export const MAX_TOWER_CANDIDATES = 10;
+
+// Heatmap color scale (low to high intensity)
+export const HEATMAP_COLORS = [
+  '#000033',  // Very dark blue (minimal)
+  '#0000ff',  // Blue (low)
+  '#00ffff',  // Cyan
+  '#00ff00',  // Green
+  '#ffff00',  // Yellow
+  '#ff8800',  // Orange
+  '#ff0000',  // Red (high)
+];
+
+// Tower type to dimension index mapping
+export const TOWER_TYPE_INDEX: Record<string, number> = {
+  aquagen: 0,
+  aerogen: 1,
+  petrogen: 2,
+  biogen: 3,
+  thermogen: 4,
+  photogen: 5,
+  keraunogen: 6,
+  kinegen: 7,
+  piezogen: 8,
+};
+
+// Dimension index to tower type name (for display)
+export const DIMENSION_NAMES = [
+  'Aquagen',
+  'Aerogen',
+  'Petrogen',
+  'Biogen',
+  'Thermogen',
+  'Photogen',
+  'Keraunogen',
+  'Kinegen',
+  'Piezogen',
+];

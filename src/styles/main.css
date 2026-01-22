@@ -52,7 +52,7 @@ body {
 
 /* Sidebar */
 #sidebar {
-  width: 240px;
+  width: 360px;
   background: #2a2a2a;
   border-left: 1px solid #444;
   display: flex;
@@ -276,4 +276,131 @@ button:disabled {
 
 .leaflet-interactive.draggable-point:active {
   cursor: grabbing;
+}
+
+/* Simulator layer buttons */
+.layer-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.layer-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background: transparent;
+  border: 2px solid #444;
+  border-radius: 4px;
+  color: #e0e0e0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.layer-btn:hover:not(:disabled) {
+  background: #333;
+}
+
+.layer-btn.active {
+  background: #3a5a8a;
+  border-color: #4a7aba;
+}
+
+/* Field display */
+.field-display {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #444;
+}
+
+.field-display h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #e0e0e0;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.field-value {
+  background: #333;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.field-name {
+  color: #888;
+  font-size: 0.65rem;
+  text-transform: capitalize;
+}
+
+.field-num {
+  color: #e0e0e0;
+  font-weight: 600;
+}
+
+.field-summary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+/* Contributing towers list */
+.field-display h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+  margin-bottom: 0.375rem;
+  color: #aaa;
+}
+
+.contributors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.contributor-item {
+  background: #333;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.contributor-type {
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.contributor-details {
+  color: #888;
+  font-size: 0.7rem;
+}
+
+.dampened-arrow {
+  color: #ff8800;
+  margin: 0 0.15rem;
+}
+
+.dampening-badge {
+  background: #553300;
+  color: #ffaa44;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  margin-left: 0.25rem;
 }

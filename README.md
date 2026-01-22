@@ -10,6 +10,8 @@ A TypeScript-based map annotation tool for the Phenn role-playing game world. Al
 - **Towers**: Place towers of 9 different types (Aquagen, Aerogen, Petrogen, Biogen, Thermogen, Photogen, Keraunogen, Kinegen, Piezogen) with configurable power levels. Click to select and edit type/power in sidebar. Ctrl+drag to move, Shift+click to delete.
 - **Settlements**: Add settlements with variable sizes (size 0 = hollow "Empty" marker, 1-5 = filled circles). Click to select and edit name/size in sidebar. Ctrl+drag to move, Shift+click to delete.
 - **Roads**: Connect settlements with roads (safe = solid line, unsafe = dotted line). Alt+click road to toggle safe/unsafe, Shift+click to delete.
+- **Harmonic Simulator**: Visualize the 9-dimensional harmonic field across the map. Uses barrier-based contribution model where nearby towers can block distant ones. Select layer types (individual dimensions, total, dominant, contributors) with configurable hyperparameters. Click to inspect field values and see contributing towers with connection lines.
+- **Mesh Refinement**: Alt+click cycles refinement levels: fine (cyan, 150px/10px) → finer (gold, 50px/3px) → remove. Allows detailed boundary inspection.
 - **Background Toggle**: Show/hide the reference map image; when hidden, displays ocean (pale blue) and continent (cream) fill.
 - **Undo**: Ctrl+Z to undo actions.
 - **Persistence**: Save annotations to JSON file.
@@ -60,14 +62,15 @@ phenn/
 │   ├── map/
 │   │   └── MapManager.ts   # Leaflet initialization
 │   ├── annotations/
-│   │   ├── CoastlineMode.ts   # Coastline drawing
+│   │   ├── CoastlineMode.ts   # Coastline drawing/editing
 │   │   ├── TowerMode.ts       # Tower placement
 │   │   ├── SettlementMode.ts  # Settlement placement
-│   │   └── RoadMode.ts        # Road connections
+│   │   ├── RoadMode.ts        # Road connections
+│   │   └── SimulatorMode.ts   # Harmonic field visualization
 │   ├── utils/
 │   │   └── persistence.ts  # JSON save/load
 │   └── data/
-│       └── coastline.json  # Saved annotation data (optional)
+│       └── coastline.json  # Saved annotation data
 ```
 
 ## Implementation Status

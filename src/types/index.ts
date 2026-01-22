@@ -62,6 +62,51 @@ export interface TowerData {
   towers: Tower[];
 }
 
+// ============ Harmonic Simulator Types ============
+
+export interface HarmonicField {
+  dimensions: number[]; // 9 values, one per tower type
+}
+
+export interface TowerContribution {
+  tower: Tower;
+  distance: number;
+  contribution: number;           // Raw calculated field contribution
+  dampening?: number;             // Dampening factor (1 = none, 0.1 = heavy)
+  dampenedContribution?: number;  // contribution * dampening
+}
+
+export interface SimulatorHyperparameters {
+  backgroundValue: number;       // Default: 10
+  distanceDamping: number;       // Power-law exponent, default: 1.5
+  dampeningStrength: number;     // Dampening multiplier, default: 0.6
+  minDampening: number;          // Floor for dampening, default: 0.1
+}
+
+export interface SimulatorClickedPoint {
+  x: number;
+  y: number;
+  field: HarmonicField;
+  contributions: TowerContribution[];  // Towers that contributed to this field
+}
+
+// Refinement point for finer mesh resolution
+export interface RefinementPoint {
+  id: string;
+  x: number;
+  y: number;
+  level: 1 | 2;  // 1 = fine (10px, 150px radius), 2 = finer (3px, 50px radius)
+}
+
+// Special layer types beyond the 9 tower type dimensions
+export type SimulatorLayerType =
+  | number           // 0-8 for individual tower type dimensions
+  | 'total'          // Sum of all dimensions
+  | 'dominant'       // Color by dominant dimension (strict winner)
+  | 'dominant-safe'  // Dominant dimension, but frontier areas shown differently
+  | 'contributor-count'  // Number of contributing towers (1-10 scale)
+  | null;            // No heatmap
+
 export interface PendingEdit {
   type: 'add' | 'replace';
   points: Point[];              // Points being added
@@ -79,7 +124,8 @@ export type AnnotationMode =
   | 'settlement-position'
   | 'settlement-properties'
   | 'road-position'
-  | 'road-properties';
+  | 'road-properties'
+  | 'simulator';
 
 export type CoastlineSubMode = 'add' | 'remove' | 'move';
 
@@ -103,6 +149,11 @@ export interface AppStateData {
   // Selection state for editing
   selectedTowerId: string | null;
   selectedSettlementId: string | null;
+  // Simulator state
+  simulatorHyperparameters: SimulatorHyperparameters;
+  simulatorActiveLayer: SimulatorLayerType;  // Layer to display in heatmap
+  simulatorClickedPoint: SimulatorClickedPoint | null;
+  simulatorRefinementPoints: RefinementPoint[];  // Points with finer mesh resolution
 }
 
 // ============ Event Types ============
@@ -135,7 +186,13 @@ export type ActionType =
   | 'SET_ROAD_SAFE'
   | 'SET_PENDING_ROAD_START'
   | 'SELECT_TOWER'
-  | 'SELECT_SETTLEMENT';
+  | 'SELECT_SETTLEMENT'
+  | 'SET_SIMULATOR_HYPERPARAMETERS'
+  | 'SET_SIMULATOR_LAYER'
+  | 'SET_SIMULATOR_CLICKED'
+  | 'ADD_REFINEMENT_POINT'
+  | 'REMOVE_REFINEMENT_POINT'
+  | 'UPDATE_REFINEMENT_POINT';
 
 export interface StateChangeEvent<T = unknown> {
   type: ActionType;
