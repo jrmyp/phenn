@@ -114,6 +114,17 @@ export const HEATMAP_COLORS = [
   '#ff0000',  // Red (high)
 ];
 
+// Stability layer color scale (ratio 0 = contested, 1 = stable)
+export const STABILITY_COLORS = [
+  '#ff0000',  // Red (ratio 0 - very close to a barycenter, contested)
+  '#ff8800',  // Orange
+  '#ffff00',  // Yellow
+  '#88ff88',  // Light green
+  '#00ff00',  // Green
+  '#00ffff',  // Cyan
+  '#0088ff',  // Blue (ratio 1 - all barycenters equidistant, stable)
+];
+
 // Tower type to dimension index mapping
 export const TOWER_TYPE_INDEX: Record<string, number> = {
   aquagen: 0,

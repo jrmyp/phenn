@@ -76,6 +76,14 @@ export interface TowerContribution {
   dampenedContribution?: number;  // contribution * dampening
 }
 
+export interface ProjectionInfo {
+  x: number;
+  y: number;
+  towerA: Tower;
+  towerB: Tower;
+  distance: number;  // Distance from the point to this projection
+}
+
 export interface SimulatorHyperparameters {
   backgroundValue: number;       // Default: 10
   distanceDamping: number;       // Power-law exponent, default: 1.5
@@ -88,6 +96,10 @@ export interface SimulatorClickedPoint {
   y: number;
   field: HarmonicField;
   contributions: TowerContribution[];  // Towers that contributed to this field
+  projections?: ProjectionInfo[];      // All line projections for stability display
+  closestProjection?: ProjectionInfo;  // Projection nearest to clicked point
+  secondClosestProjection?: ProjectionInfo; // Second nearest projection
+  stabilityRatio?: number;             // closest_distance / second_closest_distance
 }
 
 // Refinement point for finer mesh resolution
@@ -105,6 +117,7 @@ export type SimulatorLayerType =
   | 'dominant'       // Color by dominant dimension (strict winner)
   | 'dominant-safe'  // Dominant dimension, but frontier areas shown differently
   | 'contributor-count'  // Number of contributing towers (1-10 scale)
+  | 'stability'      // Ratio of distance to closest/furthest barycenter
   | null;            // No heatmap
 
 export interface PendingEdit {

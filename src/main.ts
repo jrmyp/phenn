@@ -448,6 +448,7 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
       { key: 'dominant', label: 'Dominant', color: '#ffffff' },
       { key: 'dominant-safe', label: 'Safe Only', color: '#aaaaaa' },
       { key: 'contributor-count', label: 'Contributors', color: '#ff00ff' },
+      { key: 'stability', label: 'Stability', color: '#00ff88' },
     ];
     const specialButtonsHtml = specialLayers.map(layer => {
       const isActive = activeLayer === layer.key;
@@ -491,7 +492,7 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
         let newLayer: SimulatorLayerType;
         if (layerVal === 'none') {
           newLayer = null;
-        } else if (layerVal === 'total' || layerVal === 'dominant' || layerVal === 'dominant-safe' || layerVal === 'contributor-count') {
+        } else if (layerVal === 'total' || layerVal === 'dominant' || layerVal === 'dominant-safe' || layerVal === 'contributor-count' || layerVal === 'stability') {
           newLayer = layerVal;
         } else {
           newLayer = parseInt(layerVal!, 10);
@@ -585,6 +586,43 @@ function updateSimulatorFieldDisplay(simulatorModeRef: SimulatorMode): void {
       }).join('')
     : '<div class="mode-hint">No contributing towers</div>';
 
+  // Build stability info
+  const projections = clicked.projections || [];
+  const closest = clicked.closestProjection;
+  const secondClosest = clicked.secondClosestProjection;
+  const stabilityRatio = clicked.stabilityRatio;
+
+  let stabilityHtml = '';
+  if (projections.length > 0 && closest && secondClosest && stabilityRatio !== undefined) {
+    const formatTowerPair = (a: { type: string }, b: { type: string }) => {
+      const nameA = a.type.charAt(0).toUpperCase() + a.type.slice(1);
+      const nameB = b.type.charAt(0).toUpperCase() + b.type.slice(1);
+      return `${nameA} + ${nameB}`;
+    };
+    const closestPair = formatTowerPair(closest.towerA, closest.towerB);
+    const secondClosestPair = formatTowerPair(secondClosest.towerA, secondClosest.towerB);
+
+    stabilityHtml = `
+      <h4>Stability (${projections.length} projections)</h4>
+      <div class="stability-info">
+        <div class="stability-ratio">Ratio: <strong>${stabilityRatio.toFixed(3)}</strong></div>
+        <div class="projection-item closest">
+          <span class="projection-label">Closest:</span>
+          <span class="projection-details">${closestPair} @ ${Math.round(closest.distance)}px</span>
+        </div>
+        <div class="projection-item second-closest">
+          <span class="projection-label">2nd closest:</span>
+          <span class="projection-details">${secondClosestPair} @ ${Math.round(secondClosest.distance)}px</span>
+        </div>
+      </div>
+    `;
+  } else if (contributions.length < 2) {
+    stabilityHtml = `
+      <h4>Stability</h4>
+      <div class="mode-hint">Need 2+ contributors for stability</div>
+    `;
+  }
+
   fieldDisplay.innerHTML = `
     <h3>Field at (${Math.round(clicked.x)}, ${Math.round(clicked.y)})</h3>
     <div class="field-grid">${fieldValuesHtml}</div>
@@ -594,6 +632,7 @@ function updateSimulatorFieldDisplay(simulatorModeRef: SimulatorMode): void {
     </div>
     <h4>Contributing Towers (${contributions.length})</h4>
     <div class="contributors-list">${contributorsHtml}</div>
+    ${stabilityHtml}
   `;
 }
 

@@ -1,10 +1,11 @@
 import L from 'leaflet';
 import { AppState } from '../state/AppState';
-import { HarmonicField, SimulatorHyperparameters, SimulatorLayerType, TowerContribution, Tower } from '../types';
+import { HarmonicField, SimulatorHyperparameters, SimulatorLayerType, TowerContribution, Tower, ProjectionInfo } from '../types';
 import {
   TOWER_TYPE_INDEX,
   TOWER_COLORS,
   HEATMAP_COLORS,
+  STABILITY_COLORS,
   HEATMAP_GRID_RESOLUTION,
   MAP_WIDTH,
   MAP_HEIGHT,
@@ -26,6 +27,7 @@ export class SimulatorMode {
   private markerLayer: L.LayerGroup;
   private refinementMarkerLayer: L.LayerGroup;
   private contributionLineLayer: L.LayerGroup;
+  private projectionMarkerLayer: L.LayerGroup;
   private clickMarker: L.CircleMarker | null = null;
   private clickHandler: (e: L.LeafletMouseEvent) => void;
   private active = false;
@@ -37,6 +39,7 @@ export class SimulatorMode {
     // Create layer groups for heatmap and markers (heatmap below markers)
     this.heatmapLayer = L.layerGroup().addTo(map);
     this.contributionLineLayer = L.layerGroup().addTo(map);
+    this.projectionMarkerLayer = L.layerGroup().addTo(map);
     this.markerLayer = L.layerGroup().addTo(map);
     this.refinementMarkerLayer = L.layerGroup().addTo(map);
 
@@ -68,6 +71,7 @@ export class SimulatorMode {
     this.map.off('click', this.clickHandler);
     this.heatmapLayer.clearLayers();
     this.contributionLineLayer.clearLayers();
+    this.projectionMarkerLayer.clearLayers();
     this.markerLayer.clearLayers();
     this.refinementMarkerLayer.clearLayers();
     this.clickMarker = null;
@@ -85,9 +89,22 @@ export class SimulatorMode {
 
     const { field, contributions } = this.calculateField(x, y);
 
-    this.appState.dispatch('SET_SIMULATOR_CLICKED', { x, y, field, contributions });
+    // Calculate projections for stability display
+    const projectionResult = this.calculateProjections(x, y, contributions);
+
+    this.appState.dispatch('SET_SIMULATOR_CLICKED', {
+      x,
+      y,
+      field,
+      contributions,
+      projections: projectionResult.projections,
+      closestProjection: projectionResult.closest,
+      secondClosestProjection: projectionResult.secondClosest,
+      stabilityRatio: projectionResult.ratio,
+    });
     this.renderClickMarker();
     this.renderContributionLines();
+    this.renderProjectionMarkers();
     this.updateStatus();
   }
 
@@ -165,6 +182,69 @@ export class SimulatorMode {
         }
       );
       this.contributionLineLayer.addLayer(line);
+    }
+  }
+
+  private renderProjectionMarkers(): void {
+    this.projectionMarkerLayer.clearLayers();
+
+    const state = this.appState.getState();
+    const clicked = state.simulatorClickedPoint;
+
+    if (!clicked || !clicked.projections || clicked.projections.length === 0) return;
+
+    const closest = clicked.closestProjection;
+    const secondClosest = clicked.secondClosestProjection;
+
+    for (const projection of clicked.projections) {
+      const isClosest = projection === closest;
+      const isSecondClosest = projection === secondClosest;
+
+      if (isClosest) {
+        // Diamond shape for closest (green)
+        const size = 6;
+        const diamond = L.polygon(
+          [
+            [projection.y - size, projection.x],
+            [projection.y, projection.x + size],
+            [projection.y + size, projection.x],
+            [projection.y, projection.x - size],
+          ],
+          {
+            color: '#00ff00',
+            weight: 2,
+            fillColor: '#00ff00',
+            fillOpacity: 0.6,
+          }
+        );
+        this.projectionMarkerLayer.addLayer(diamond);
+      } else if (isSecondClosest) {
+        // Square shape for second closest (orange)
+        const size = 5;
+        const square = L.rectangle(
+          [
+            [projection.y - size, projection.x - size],
+            [projection.y + size, projection.x + size],
+          ],
+          {
+            color: '#ff8800',
+            weight: 2,
+            fillColor: '#ff8800',
+            fillOpacity: 0.6,
+          }
+        );
+        this.projectionMarkerLayer.addLayer(square);
+      } else {
+        // Small gray circle for other projections
+        const marker = L.circleMarker([projection.y, projection.x], {
+          radius: 4,
+          color: '#666666',
+          weight: 1,
+          fillColor: '#888888',
+          fillOpacity: 0.5,
+        });
+        this.projectionMarkerLayer.addLayer(marker);
+      }
     }
   }
 
@@ -470,6 +550,110 @@ export class SimulatorMode {
     return contributors;
   }
 
+  // Calculate projections of point P onto lines formed by all pairs of contributors
+  calculateProjections(
+    x: number,
+    y: number,
+    contributions: TowerContribution[]
+  ): { projections: ProjectionInfo[]; closest?: ProjectionInfo; secondClosest?: ProjectionInfo; ratio?: number } {
+    const projections: ProjectionInfo[] = [];
+
+    // Need at least 2 contributors to form a pair
+    if (contributions.length < 2) {
+      return { projections };
+    }
+
+    // Enumerate all pairs
+    for (let i = 0; i < contributions.length; i++) {
+      for (let j = i + 1; j < contributions.length; j++) {
+        const towerA = contributions[i].tower;
+        const towerB = contributions[j].tower;
+
+        // Project point P onto the line through towerA and towerB
+        // vec_line = B - A
+        const lineX = towerB.x - towerA.x;
+        const lineY = towerB.y - towerA.y;
+
+        // vec_to_p = P - A
+        const toPX = x - towerA.x;
+        const toPY = y - towerA.y;
+
+        // t = dot(vec_to_p, vec_line) / dot(vec_line, vec_line)
+        const lineLengthSq = lineX * lineX + lineY * lineY;
+        if (lineLengthSq === 0) continue; // Skip if towers are at same position
+
+        const t = (toPX * lineX + toPY * lineY) / lineLengthSq;
+
+        // projection = A + t * vec_line
+        const projX = towerA.x + t * lineX;
+        const projY = towerA.y + t * lineY;
+
+        // Distance from point to projection
+        const distance = Math.sqrt((x - projX) ** 2 + (y - projY) ** 2);
+
+        projections.push({ x: projX, y: projY, towerA, towerB, distance });
+      }
+    }
+
+    if (projections.length === 0) {
+      return { projections };
+    }
+
+    // Sort by distance to find closest and second closest
+    const sorted = projections.slice().sort((a, b) => a.distance - b.distance);
+    const closest = sorted[0];
+    const secondClosest = sorted.length > 1 ? sorted[1] : sorted[0];
+
+    // Calculate stability ratio (closest / second closest)
+    // 0 = on a line, 1 = equidistant to two closest lines
+    const ratio = secondClosest.distance > 0 ? closest.distance / secondClosest.distance : 1;
+
+    return { projections, closest, secondClosest, ratio };
+  }
+
+  // Calculate stability ratio for heatmap rendering (lightweight, no full projection list)
+  private calculateStabilityRatio(x: number, y: number, contributions: TowerContribution[]): number {
+    if (contributions.length < 2) {
+      return 1; // No pairs = stable (neutral)
+    }
+
+    const distances: number[] = [];
+
+    for (let i = 0; i < contributions.length; i++) {
+      for (let j = i + 1; j < contributions.length; j++) {
+        const towerA = contributions[i].tower;
+        const towerB = contributions[j].tower;
+
+        // Project point onto line through towerA and towerB
+        const lineX = towerB.x - towerA.x;
+        const lineY = towerB.y - towerA.y;
+        const toPX = x - towerA.x;
+        const toPY = y - towerA.y;
+
+        const lineLengthSq = lineX * lineX + lineY * lineY;
+        if (lineLengthSq === 0) continue;
+
+        const t = (toPX * lineX + toPY * lineY) / lineLengthSq;
+        const projX = towerA.x + t * lineX;
+        const projY = towerA.y + t * lineY;
+
+        const distance = Math.sqrt((x - projX) ** 2 + (y - projY) ** 2);
+        distances.push(distance);
+      }
+    }
+
+    if (distances.length < 2) {
+      return 1; // Only one projection = stable
+    }
+
+    // Find the two smallest distances
+    distances.sort((a, b) => a - b);
+    const closest = distances[0];
+    const secondClosest = distances[1];
+
+    return secondClosest > 0 ? closest / secondClosest : 1;
+  }
+
   private renderHeatmap(): void {
     const state = this.appState.getState();
     const activeLayer = state.simulatorActiveLayer;
@@ -575,9 +759,10 @@ export class SimulatorMode {
   }
 
   private renderCell(x: number, y: number, size: number, activeLayer: SimulatorLayerType): void {
-    const result = this.calculateField(x + size / 2, y + size / 2);
-    const contributorCount = result.contributions.length;
-    const color = this.getColorForLayer(result.field, activeLayer, contributorCount);
+    const centerX = x + size / 2;
+    const centerY = y + size / 2;
+    const result = this.calculateField(centerX, centerY);
+    const color = this.getColorForLayer(result.field, activeLayer, result.contributions, centerX, centerY);
 
     if (!color) return;
 
@@ -596,7 +781,13 @@ export class SimulatorMode {
     this.heatmapLayer.addLayer(rect);
   }
 
-  private getColorForLayer(field: HarmonicField, activeLayer: SimulatorLayerType, contributorCount?: number): string | null {
+  private getColorForLayer(
+    field: HarmonicField,
+    activeLayer: SimulatorLayerType,
+    contributions?: TowerContribution[],
+    pointX?: number,
+    pointY?: number
+  ): string | null {
     if (activeLayer === null) return null;
 
     if (typeof activeLayer === 'number') {
@@ -632,7 +823,7 @@ export class SimulatorMode {
 
     if (activeLayer === 'contributor-count') {
       // Color based on number of contributing towers
-      const count = contributorCount ?? 0;
+      const count = contributions?.length ?? 0;
       if (count === 0) {
         return '#111111'; // Very dark for no contributors
       }
@@ -643,7 +834,36 @@ export class SimulatorMode {
       return this.valueToColor(value);
     }
 
+    if (activeLayer === 'stability') {
+      // Color based on stability ratio (distance to closest / distance to furthest barycenter)
+      if (!contributions || contributions.length < 2 || pointX === undefined || pointY === undefined) {
+        return '#888888'; // Neutral gray for insufficient contributors
+      }
+      const ratio = this.calculateStabilityRatio(pointX, pointY, contributions);
+      return this.stabilityRatioToColor(ratio);
+    }
+
     return null;
+  }
+
+  private stabilityRatioToColor(ratio: number): string {
+    // Map ratio 0-1 to color scale
+    // 0 = contested (red), 1 = stable (blue)
+    const t = Math.max(0, Math.min(1, ratio));
+
+    const colorIndex = t * (STABILITY_COLORS.length - 1);
+    const lowerIndex = Math.floor(colorIndex);
+    const upperIndex = Math.min(lowerIndex + 1, STABILITY_COLORS.length - 1);
+    const blend = colorIndex - lowerIndex;
+
+    const lowerColor = this.hexToRgb(STABILITY_COLORS[lowerIndex]);
+    const upperColor = this.hexToRgb(STABILITY_COLORS[upperIndex]);
+
+    const r = Math.round(lowerColor.r + blend * (upperColor.r - lowerColor.r));
+    const g = Math.round(lowerColor.g + blend * (upperColor.g - lowerColor.g));
+    const b = Math.round(lowerColor.b + blend * (upperColor.b - lowerColor.b));
+
+    return `rgb(${r}, ${g}, ${b})`;
   }
 
   // Calculate field stability: how many dimensions are in the leading group
