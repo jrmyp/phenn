@@ -10,22 +10,20 @@ import {
   MAP_WIDTH,
   MAP_HEIGHT,
   LOW_TOTAL_THRESHOLD,
+  NUDGE_GRID,
 } from '../config/constants';
 import {
   calculateFieldAt,
   getFieldBalanceIndex as getFieldBalanceIndexUtil,
-  calculateStabilityRatio as calculateStabilityRatioUtil,
+  calculateStabilityValue as calculateStabilityValueUtil,
   calculateStabilityComponents as calculateStabilityComponentsUtil,
 } from '../utils/harmonicField';
 
-// TODO: Get those from NUDGE_GRID in config/constants.ts (and rename there, the constants are supposed to be shared)
-// Level 1: Fine grid resolution
-const FINE_GRID_RESOLUTION = 10;
-const FINE_REFINEMENT_RADIUS = 150;
-
-// Level 2: Finer grid resolution
-const FINER_GRID_RESOLUTION = 3;
-const FINER_REFINEMENT_RADIUS = 50;
+// Grid resolution constants from shared config
+const FINE_GRID_RESOLUTION = NUDGE_GRID.fine.resolution;
+const FINE_REFINEMENT_RADIUS = NUDGE_GRID.fine.radius;
+const FINER_GRID_RESOLUTION = NUDGE_GRID.finer.resolution;
+const FINER_REFINEMENT_RADIUS = NUDGE_GRID.finer.radius;
 
 export class SimulatorMode {
   private map: L.Map;
@@ -360,10 +358,10 @@ export class SimulatorMode {
     return { projections, closest, secondClosest };
   }
 
-  // Calculate stability ratio for heatmap rendering (lightweight, no full projection list)
-  private calculateStabilityRatio(x: number, y: number, contributions: TowerContribution[]): number {
+  // Calculate stability value for heatmap rendering (lightweight, no full projection list)
+  private calculateStabilityValue(x: number, y: number, contributions: TowerContribution[]): number {
     const params = this.appState.getState().simulatorHyperparameters;
-    return calculateStabilityRatioUtil(x, y, contributions, params);
+    return calculateStabilityValueUtil(x, y, contributions, params);
   }
 
   private renderHeatmap(): void {
@@ -517,7 +515,8 @@ export class SimulatorMode {
       // Sum of all dimensions, but only show tiles below threshold
       const total = this.getTotalIntensity(field);
       if (total > LOW_TOTAL_THRESHOLD) return null; // Don't render high-intensity tiles
-      return this.lowTotalValueToColor(total);
+      const t = Math.max(0, Math.min(1, total / LOW_TOTAL_THRESHOLD));
+      return this.interpolateColors(t, HEATMAP_COLORS);
     }
 
     if (activeLayer === 'dominant') {
@@ -554,34 +553,22 @@ export class SimulatorMode {
     }
 
     if (activeLayer === 'stability') {
-      // Color based on stability ratio
+      // Color based on stability: 0 = contested (red), 1 = stable (blue)
       if (!contributions || contributions.length < 2 || pointX === undefined || pointY === undefined) {
         return '#888888'; // Neutral gray for insufficient contributors
       }
-      const ratio = this.calculateStabilityRatio(pointX, pointY, contributions);
-      return this.stabilityRatioToColor(ratio);
+      const stability = this.calculateStabilityValue(pointX, pointY, contributions);
+      const t = Math.max(0, Math.min(1, stability));
+      return this.interpolateColors(t, STABILITY_COLORS);
     }
 
     return null;
-  }
-
-  // TODO: only one reference to this function remains; consider inlining
-  private stabilityRatioToColor(ratio: number): string {
-    // 0 = contested (red), 1 = stable (blue)
-    const t = Math.max(0, Math.min(1, ratio));
-    return this.interpolateColors(t, STABILITY_COLORS);
   }
 
   // Calculate field balance index: how many dimensions are in the leading coalition
   // Returns 1 for single dominant dimension, 2+ for frontier (multiple competing leaders)
   getFieldBalanceIndex(field: HarmonicField): number {
     return getFieldBalanceIndexUtil(field);
-  }
-
-  // TODO: only one reference to this function remains; consider inlining
-  private lowTotalValueToColor(value: number): string {
-    const t = Math.max(0, Math.min(1, value / LOW_TOTAL_THRESHOLD));
-    return this.interpolateColors(t, HEATMAP_COLORS);
   }
 
   private valueToColor(value: number): string {

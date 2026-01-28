@@ -49,7 +49,7 @@ function createInitialState(): AppStateData {
     settlementViewMode: 'default',
     selectedRoadSafe: true,
     pendingRoadStartId: null,
-    roadViewMode: 'default',
+    roadViewMode: 'frontier',
     selectedTowerId: null,
     selectedSettlementId: null,
     selectedRoadId: null,

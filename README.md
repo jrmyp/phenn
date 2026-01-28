@@ -47,6 +47,7 @@ phenn/
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
+├── README.md               # This file
 ├── DESIGN.md               # Design document
 ├── src/
 │   ├── main.ts             # Application entry point
@@ -69,7 +70,10 @@ phenn/
 │   │   ├── RoadMode.ts        # Road connections
 │   │   └── SimulatorMode.ts   # Harmonic field visualization
 │   ├── utils/
-│   │   └── persistence.ts  # JSON save/load
+│   │   ├── persistence.ts        # JSON save/load
+│   │   ├── harmonicField.ts      # Harmonic field calculations
+│   │   ├── hexagonify.ts         # Hex grid generation
+│   │   └── bezierOptimization.ts # Bézier curve utilities
 │   └── data/
 │       └── coastline.json  # Saved annotation data
 ```

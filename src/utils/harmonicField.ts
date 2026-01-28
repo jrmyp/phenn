@@ -369,11 +369,10 @@ export function calculateStabilityComponents(
 }
 
 /**
- * Calculate stability ratio for a point (convenience wrapper).
+ * Calculate stability value for a point (convenience wrapper).
  * Returns S = max(R, G).
  */
-// TODO: rename to calculateStabilityValue for clarity (not just ratio)
-export function calculateStabilityRatio(
+export function calculateStabilityValue(
   x: number,
   y: number,
   contributions: TowerContribution[],
@@ -385,24 +384,22 @@ export function calculateStabilityRatio(
 // ============ Status Conversion Functions ============
 
 /**
- * Convert stability count (coalition size) to balance type.
+ * Convert balance index (coalition size) to balance type.
  */
-// TODO: rename to balanceIndexToBalance for clarity (with renamed variables)
-export function stabilityCountToBalance(stabilityCount: number): SettlementBalance {
-  if (stabilityCount === 1) return 'dominated';
-  if (stabilityCount === 2) return 'frontier';
+export function balanceIndexToBalance(balanceIndex: number): SettlementBalance {
+  if (balanceIndex === 1) return 'dominated';
+  if (balanceIndex === 2) return 'frontier';
   return 'tripoint';
 }
 
 /**
- * Convert stability ratio to stability type.
- * ratio near 0 = near boundary = low stability
- * ratio near 1 = stable interior = high stability
+ * Convert stability value to stability type.
+ * value near 0 = near boundary = low stability
+ * value near 1 = stable interior = high stability
  */
-// TODO: rename to stabilityValueToStability for clarity (not just ratio)
-export function stabilityRatioToStability(ratio: number): SettlementStability {
-  if (ratio > 0.7) return 'high';
-  if (ratio >= 0.3) return 'medium';
+export function stabilityValueToStability(value: number): SettlementStability {
+  if (value > 0.7) return 'high';
+  if (value >= 0.3) return 'medium';
   return 'low';
 }
 
@@ -425,10 +422,10 @@ export function computeSettlementSimulatedStatus(
   const { field, contributions } = calculateFieldAt(x, y, towers, params);
 
   const stabilityCount = getFieldBalanceIndex(field);
-  const stabilityRatio = calculateStabilityRatio(x, y, contributions, params);
+  const stabilityValue = calculateStabilityValue(x, y, contributions, params);
 
   return {
-    stability: stabilityRatioToStability(stabilityRatio),
-    balance: stabilityCountToBalance(stabilityCount),
+    stability: stabilityValueToStability(stabilityValue),
+    balance: balanceIndexToBalance(stabilityCount),
   };
 }
