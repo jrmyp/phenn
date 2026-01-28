@@ -16,6 +16,7 @@ import {
   SettlementTerrain,
   SettlementCanonicalStatus,
   SettlementViewMode,
+  RoadViewMode,
 } from './types';
 import { TOWER_SIZE, SETTLEMENT_SIZE, DIMENSION_NAMES, TOWER_COLORS } from './config/constants';
 import { computeSettlementSimulatedStatus } from './utils/harmonicField';
@@ -88,7 +89,7 @@ async function init(): Promise<void> {
         appState.dispatch('SET_MODE', 'road-position');
         roadMode.activate();
         settlementMode.setClickHandler((s) => roadMode.handleSettlementClick(s));
-        showModeOptions('road');
+        showModeOptions('road', undefined, roadMode);
       } else if (mode === 'simulator') {
         appState.dispatch('SET_MODE', 'simulator');
         simulatorMode.activate();
@@ -156,6 +157,8 @@ async function init(): Promise<void> {
   let prevSimulatorClickedPoint: SimulatorClickedPoint | null = null;
   let prevSettlementViewMode: SettlementViewMode = 'default';
   let prevSelectedSettlementCanonical: string | null = null;  // JSON string of canonical status
+  let prevRoadViewMode: RoadViewMode = 'default';
+  let prevSelectedRoadId: string | null = null;
 
   // Update commit/cancel button states and refresh UI based on state changes
   appState.subscribe(() => {
@@ -211,6 +214,14 @@ async function init(): Promise<void> {
       prevSimulatorClickedPoint = state.simulatorClickedPoint;
       updateSimulatorFieldDisplay(simulatorMode);
     }
+
+    // Refresh road options UI when view mode or selection changes
+    if (state.currentMode === 'road-position' &&
+        (state.roadViewMode !== prevRoadViewMode || state.selectedRoadId !== prevSelectedRoadId)) {
+      prevRoadViewMode = state.roadViewMode;
+      prevSelectedRoadId = state.selectedRoadId;
+      showModeOptions('road', undefined, roadMode);
+    }
   });
 
   // Initialize mode options UI
@@ -227,7 +238,7 @@ async function init(): Promise<void> {
   }
 }
 
-function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
+function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode, roadModeRef?: RoadMode): void {
   const optionsEl = document.getElementById('mode-options');
   if (!optionsEl) return;
 
@@ -592,22 +603,112 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
     }
   } else if (mode === 'road') {
     const state = appState.getState();
+    const viewMode = state.roadViewMode;
+    const selectedRoadId = state.selectedRoadId;
+    const selectedRoad = selectedRoadId
+      ? state.roads.roads.find(r => r.id === selectedRoadId)
+      : null;
+
+    // Get settlement names for selected road
+    let selectedRoadInfo = '';
+    if (selectedRoad) {
+      const startSettlement = state.settlements.settlements.find(s => s.id === selectedRoad.startSettlementId);
+      const endSettlement = state.settlements.settlements.find(s => s.id === selectedRoad.endSettlementId);
+      const startName = startSettlement?.name || 'settlement';
+      const endName = endSettlement?.name || 'settlement';
+      selectedRoadInfo = `
+        <div class="option-group selected-road-info">
+          <h3>Selected Road</h3>
+          <p>${startName} → ${endName}</p>
+          <p>${(selectedRoad.waypoints || []).length} waypoint(s)</p>
+          <label>
+            <input type="checkbox" id="selected-road-safe" ${selectedRoad.safe ? 'checked' : ''} />
+            Safe (solid line)
+          </label>
+          <div class="button-row">
+            <button id="optimize-road-btn" class="action-btn">Optimize Curve</button>
+            <button id="clear-waypoints-btn" class="action-btn">Clear Waypoints</button>
+          </div>
+          ${viewMode === 'nudge' ? '<div class="button-row"><button id="snap-waypoints-btn" class="action-btn">Snap to Frontier</button></div>' : ''}
+        </div>
+      `;
+    }
+
     optionsEl.innerHTML = `
       <h2>Road Options</h2>
       <div class="option-group">
+        <label>View:</label>
+        <div class="layer-buttons">
+          <button class="layer-btn ${viewMode === 'default' ? 'active' : ''}" data-view="default">Default</button>
+          <button class="layer-btn ${viewMode === 'frontier' ? 'active' : ''}" data-view="frontier">Curves</button>
+          <button class="layer-btn ${viewMode === 'nudge' ? 'active' : ''}" data-view="nudge">Nudge</button>
+        </div>
+      </div>
+      ${selectedRoadInfo}
+      ${!selectedRoad ? `
+      <div class="option-group">
         <label>
           <input type="checkbox" id="road-safe" ${state.selectedRoadSafe ? 'checked' : ''} />
-          Safe road (solid line)
+          New roads are safe
         </label>
       </div>
-      <p class="mode-hint">Click two settlements to connect. Alt+click road to toggle safe.</p>
+      ` : ''}
+      <p class="mode-hint">Click settlements to create roads. Click road to select. Alt+click map to add waypoints. Shift+click to remove.</p>
     `;
 
-    // Wire up safe checkbox
-    const safeCheckbox = document.getElementById('road-safe') as HTMLInputElement;
-    safeCheckbox.addEventListener('change', () => {
-      appState.dispatch('SET_ROAD_SAFE', safeCheckbox.checked);
+    // Wire up view mode buttons
+    const viewButtons = optionsEl.querySelectorAll('.layer-btn[data-view]');
+    viewButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const view = (btn as HTMLElement).dataset.view as RoadViewMode;
+        appState.dispatch('SET_ROAD_VIEW_MODE', view);
+        viewButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
     });
+
+    // Wire up safe checkbox for new roads (when no road selected)
+    const safeCheckbox = document.getElementById('road-safe') as HTMLInputElement;
+    if (safeCheckbox) {
+      safeCheckbox.addEventListener('change', () => {
+        appState.dispatch('SET_ROAD_SAFE', safeCheckbox.checked);
+      });
+    }
+
+    // Wire up selected road safe checkbox
+    const selectedRoadSafeCheckbox = document.getElementById('selected-road-safe') as HTMLInputElement;
+    if (selectedRoadSafeCheckbox && selectedRoad) {
+      selectedRoadSafeCheckbox.addEventListener('change', () => {
+        appState.dispatch('UPDATE_ROAD', { ...selectedRoad, safe: selectedRoadSafeCheckbox.checked });
+      });
+    }
+
+    // Wire up optimize button
+    const optimizeBtn = document.getElementById('optimize-road-btn');
+    if (optimizeBtn && roadModeRef) {
+      optimizeBtn.addEventListener('click', () => {
+        roadModeRef.optimizeSelectedRoad();
+        updateStatus('Road curve optimized.');
+      });
+    }
+
+    // Wire up clear waypoints button
+    const clearWaypointsBtn = document.getElementById('clear-waypoints-btn');
+    if (clearWaypointsBtn && roadModeRef) {
+      clearWaypointsBtn.addEventListener('click', () => {
+        roadModeRef.clearSelectedRoadWaypoints();
+        updateStatus('Waypoints cleared.');
+      });
+    }
+
+    // Wire up snap to frontier button
+    const snapWaypointsBtn = document.getElementById('snap-waypoints-btn');
+    if (snapWaypointsBtn && roadModeRef) {
+      snapWaypointsBtn.addEventListener('click', () => {
+        roadModeRef.snapWaypointsToFrontier();
+        updateStatus('Waypoints snapped to frontier/tripoint tiles.');
+      });
+    }
   } else if (mode === 'simulator') {
     const state = appState.getState();
     const params = state.simulatorHyperparameters;

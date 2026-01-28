@@ -13,12 +13,12 @@ import {
 } from '../config/constants';
 import {
   calculateFieldAt,
-  getFieldStability as getFieldStabilityUtil,
+  getFieldBalanceIndex as getFieldBalanceIndexUtil,
   calculateStabilityRatio as calculateStabilityRatioUtil,
   calculateStabilityComponents as calculateStabilityComponentsUtil,
 } from '../utils/harmonicField';
 
-// TODO: Move these to config/constants.ts (following same pattern as NUDGE_GRID)
+// TODO: Get those from NUDGE_GRID in config/constants.ts (and rename there, the constants are supposed to be shared)
 // Level 1: Fine grid resolution
 const FINE_GRID_RESOLUTION = 10;
 const FINE_REFINEMENT_RADIUS = 150;
@@ -528,7 +528,7 @@ export class SimulatorMode {
 
     if (activeLayer === 'balance') {
       // Dominant dimension, but show frontier areas with gray
-      const stability = this.getFieldStability(field);
+      const stability = this.getFieldBalanceIndex(field);
       if (stability >= 2) {
         // Frontier: shade of gray based on stability (darker = more contested)
         // stability 2 = light gray, higher = darker
@@ -554,7 +554,7 @@ export class SimulatorMode {
     }
 
     if (activeLayer === 'stability') {
-      // Color based on stability ratio (distance to closest / distance to furthest barycenter)
+      // Color based on stability ratio
       if (!contributions || contributions.length < 2 || pointX === undefined || pointY === undefined) {
         return '#888888'; // Neutral gray for insufficient contributors
       }
@@ -565,18 +565,20 @@ export class SimulatorMode {
     return null;
   }
 
+  // TODO: only one reference to this function remains; consider inlining
   private stabilityRatioToColor(ratio: number): string {
     // 0 = contested (red), 1 = stable (blue)
     const t = Math.max(0, Math.min(1, ratio));
     return this.interpolateColors(t, STABILITY_COLORS);
   }
 
-  // Calculate field stability: how many dimensions are in the leading group
+  // Calculate field balance index: how many dimensions are in the leading coalition
   // Returns 1 for single dominant dimension, 2+ for frontier (multiple competing leaders)
-  getFieldStability(field: HarmonicField): number {
-    return getFieldStabilityUtil(field);
+  getFieldBalanceIndex(field: HarmonicField): number {
+    return getFieldBalanceIndexUtil(field);
   }
 
+  // TODO: only one reference to this function remains; consider inlining
   private lowTotalValueToColor(value: number): string {
     const t = Math.max(0, Math.min(1, value / LOW_TOTAL_THRESHOLD));
     return this.interpolateColors(t, HEATMAP_COLORS);

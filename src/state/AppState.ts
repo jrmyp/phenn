@@ -16,6 +16,7 @@ import {
   SimulatorLayerType,
   RefinementPoint,
   SettlementViewMode,
+  RoadViewMode,
 } from '../types';
 import { TOWER_SIZE, SETTLEMENT_SIZE, SIMULATOR_DEFAULTS } from '../config/constants';
 
@@ -48,8 +49,10 @@ function createInitialState(): AppStateData {
     settlementViewMode: 'default',
     selectedRoadSafe: true,
     pendingRoadStartId: null,
+    roadViewMode: 'default',
     selectedTowerId: null,
     selectedSettlementId: null,
+    selectedRoadId: null,
     simulatorHyperparameters: { ...SIMULATOR_DEFAULTS },
     simulatorActiveLayer: null,
     simulatorClickedPoint: null,
@@ -397,6 +400,7 @@ export class AppState {
           startSettlementId,
           endSettlementId,
           safe: state.selectedRoadSafe,
+          waypoints: [],
         };
         return {
           ...state,
@@ -432,8 +436,14 @@ export class AppState {
       case 'SET_ROAD_SAFE':
         return { ...state, selectedRoadSafe: payload as boolean };
 
+      case 'SET_ROAD_VIEW_MODE':
+        return { ...state, roadViewMode: payload as RoadViewMode };
+
       case 'SET_PENDING_ROAD_START':
         return { ...state, pendingRoadStartId: payload as string | null };
+
+      case 'SELECT_ROAD':
+        return { ...state, selectedRoadId: payload as string | null };
 
       case 'SELECT_TOWER':
         return { ...state, selectedTowerId: payload as string | null };

@@ -277,10 +277,10 @@ export function calculateFieldAt(
 // ============ Field Analysis ============
 
 /**
- * Calculate field stability: how many dimensions are in the leading group.
- * Returns 1 for single dominant dimension, 2+ for frontier (multiple competing leaders).
+ * Calculate field balance index: how many dimensions are in the leading coalition.
+ * Returns 1 for single dominant dimension (dominated), 2 for frontier, 3+ for tripoint.
  */
-export function getFieldStability(field: HarmonicField): number {
+export function getFieldBalanceIndex(field: HarmonicField): number {
   const dimensions = field.dimensions;
   const sorted = dimensions.slice().sort((a, b) => b - a);
   const top = sorted[0];
@@ -372,6 +372,7 @@ export function calculateStabilityComponents(
  * Calculate stability ratio for a point (convenience wrapper).
  * Returns S = max(R, G).
  */
+// TODO: rename to calculateStabilityValue for clarity (not just ratio)
 export function calculateStabilityRatio(
   x: number,
   y: number,
@@ -386,6 +387,7 @@ export function calculateStabilityRatio(
 /**
  * Convert stability count (coalition size) to balance type.
  */
+// TODO: rename to balanceIndexToBalance for clarity (with renamed variables)
 export function stabilityCountToBalance(stabilityCount: number): SettlementBalance {
   if (stabilityCount === 1) return 'dominated';
   if (stabilityCount === 2) return 'frontier';
@@ -397,6 +399,7 @@ export function stabilityCountToBalance(stabilityCount: number): SettlementBalan
  * ratio near 0 = near boundary = low stability
  * ratio near 1 = stable interior = high stability
  */
+// TODO: rename to stabilityValueToStability for clarity (not just ratio)
 export function stabilityRatioToStability(ratio: number): SettlementStability {
   if (ratio > 0.7) return 'high';
   if (ratio >= 0.3) return 'medium';
@@ -421,7 +424,7 @@ export function computeSettlementSimulatedStatus(
 ): SettlementSimulatedStatus {
   const { field, contributions } = calculateFieldAt(x, y, towers, params);
 
-  const stabilityCount = getFieldStability(field);
+  const stabilityCount = getFieldBalanceIndex(field);
   const stabilityRatio = calculateStabilityRatio(x, y, contributions, params);
 
   return {

@@ -83,6 +83,17 @@ export const ROAD_STYLE = {
   dashArray: '8, 8',
 };
 
+// Bézier curve configuration
+export const BEZIER_CONFIG = {
+  // Sampling for rendering
+  samplePointsRendering: 50,
+
+  // Styling for curves view
+  frontierColor: '#6B4423',
+  frontierWeight: 3,
+  frontierDashArray: '12, 6',
+};
+
 // Map fill colors when background is hidden
 export const MAP_FILL = {
   ocean: '#cce5ff',     // Pale blue

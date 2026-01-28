@@ -25,6 +25,7 @@ export type SettlementStability = 'high' | 'medium' | 'low';
 export type SettlementBalance = 'dominated' | 'frontier' | 'tripoint';
 export type SettlementTerrain = 'nice' | 'difficult' | 'hostile';
 export type SettlementViewMode = 'default' | 'nudge-fine' | 'nudge-finer';
+export type RoadViewMode = 'default' | 'frontier' | 'nudge';
 
 export interface SettlementCanonicalStatus {
   stability?: SettlementStability;
@@ -47,11 +48,24 @@ export interface SettlementData {
 
 // ============ Road Types ============
 
+// Waypoint for guiding Bézier curves
+export interface RoadWaypoint {
+  id: string;
+  x: number;
+  y: number;
+}
+
 export interface Road {
   id: string;
   startSettlementId: string;
   endSettlementId: string;
   safe: boolean;  // true = solid line, false = dotted line
+  waypoints: RoadWaypoint[];  // Manual waypoints for curve guidance
+  // Bézier control points (computed from waypoints)
+  cp1x?: number;
+  cp1y?: number;
+  cp2x?: number;
+  cp2y?: number;
 }
 
 export interface RoadData {
@@ -176,9 +190,11 @@ export interface AppStateData {
   // Road placement state
   selectedRoadSafe: boolean;
   pendingRoadStartId: string | null;  // First settlement clicked when creating road
+  roadViewMode: RoadViewMode;
   // Selection state for editing
   selectedTowerId: string | null;
   selectedSettlementId: string | null;
+  selectedRoadId: string | null;
   // Simulator state
   simulatorHyperparameters: SimulatorHyperparameters;
   simulatorActiveLayer: SimulatorLayerType;  // Layer to display in heatmap
@@ -215,7 +231,9 @@ export type ActionType =
   | 'REMOVE_ROAD'
   | 'UPDATE_ROAD'
   | 'SET_ROAD_SAFE'
+  | 'SET_ROAD_VIEW_MODE'
   | 'SET_PENDING_ROAD_START'
+  | 'SELECT_ROAD'
   | 'SELECT_TOWER'
   | 'SELECT_SETTLEMENT'
   | 'SET_SIMULATOR_HYPERPARAMETERS'
