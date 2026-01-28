@@ -12,6 +12,7 @@ A TypeScript-based map annotation tool for the Phenn role-playing game world. Al
 - **Roads**: Connect settlements with roads (safe = solid line, unsafe = dotted line). Alt+click road to toggle safe/unsafe, Shift+click to delete.
 - **Harmonic Simulator**: Visualize the 9-dimensional harmonic field across the map. Uses barrier-based contribution model where nearby towers can block distant ones. Select layer types (individual dimensions, total, dominant, contributors, stability) with configurable hyperparameters. Click to inspect field values and see contributing towers with connection lines. The stability layer shows contested boundaries between tower pairs using line projections.
 - **Mesh Refinement**: Alt+click cycles refinement levels: fine (cyan, 150px/10px) → finer (gold, 50px/3px) → remove. Allows detailed boundary inspection.
+- **Nudge Engine**: In Settlement mode, compare lore (canonical) status with simulated status. Set stability/balance properties for settlements, then switch to Nudge view to see which nearby areas match. Green=stability match, Blue=balance match, Purple=both match. Settlement markers show overall match status (green/yellow/red). Ctrl+drag settlements toward matching areas.
 - **Background Toggle**: Show/hide the reference map image; when hidden, displays ocean (pale blue) and continent (cream) fill.
 - **Undo**: Ctrl+Z to undo actions.
 - **Persistence**: Save annotations to JSON file.
@@ -91,3 +92,5 @@ phenn/
 - [x] Tower/settlement selection and editing via sidebar
 - [x] Tower/settlement dragging (Ctrl+drag)
 - [x] Delete annotations (Shift+click)
+- [x] Settlement canonical status (lore) editing
+- [x] Nudge Engine - visualize lore vs simulation match around settlements

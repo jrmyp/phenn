@@ -92,13 +92,17 @@ export const MAP_FILL = {
 // Simulator configuration
 export const SIMULATOR_DEFAULTS = {
   backgroundValue: 10,
-  distanceDamping: 1.2,
+  distanceDamping: 1.5,
   dampeningStrength: 15.0,
   minDampening: 0.1,
+  stabilityGaussianVariance: 15,
 };
 
 // Grid resolution for heatmap sampling (pixels between sample points)
 export const HEATMAP_GRID_RESOLUTION = 40;
+
+// Low Total layer threshold (tiles above this total intensity are hidden)
+export const LOW_TOTAL_THRESHOLD = 300;
 
 // Maximum number of tower candidates to consider for field calculation
 export const MAX_TOWER_CANDIDATES = 10;
@@ -150,3 +154,24 @@ export const DIMENSION_NAMES = [
   'Kinegen',
   'Piezogen',
 ];
+
+// Nudge Engine configuration
+export const NUDGE_GRID = {
+  fine: { resolution: 10, radius: 150 },
+  finer: { resolution: 3, radius: 50 },
+};
+
+export const NUDGE_TILE_COLORS = {
+  stabilityMatch: '#4CAF50',  // Green for stability match only
+  balanceMatch: '#2196F3',    // Blue for balance match only
+  bothMatch: '#9C27B0',       // Purple for both match
+};
+
+export const NUDGE_MARKER_RADIUS = 4;  // Uniform small circle in nudge view
+
+export const NUDGE_SETTLEMENT_COLORS = {
+  allMatch: '#4CAF50',   // Green when both properties match
+  partial: '#FFC107',    // Yellow when one matches
+  noMatch: '#F44336',    // Red when neither matches
+  unset: '#888888',      // Gray when canonical not set
+};

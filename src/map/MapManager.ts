@@ -34,6 +34,7 @@ export class MapManager {
 
     // Add the image overlay
     this.imageOverlay = L.imageOverlay(MAP_IMAGE_PATH, this.bounds).addTo(this.map);
+    this.imageOverlay.setOpacity(0); // Start with background invisible
 
     // Fit the map view to the image
     this.map.fitBounds(this.bounds);

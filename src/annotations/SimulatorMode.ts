@@ -1,6 +1,6 @@
 import L from 'leaflet';
 import { AppState } from '../state/AppState';
-import { HarmonicField, SimulatorHyperparameters, SimulatorLayerType, TowerContribution, Tower, ProjectionInfo } from '../types';
+import { HarmonicField, SimulatorLayerType, TowerContribution, ProjectionInfo } from '../types';
 import {
   TOWER_TYPE_INDEX,
   TOWER_COLORS,
@@ -9,9 +9,16 @@ import {
   HEATMAP_GRID_RESOLUTION,
   MAP_WIDTH,
   MAP_HEIGHT,
-  MAX_TOWER_CANDIDATES,
+  LOW_TOTAL_THRESHOLD,
 } from '../config/constants';
+import {
+  calculateFieldAt,
+  getFieldStability as getFieldStabilityUtil,
+  calculateStabilityRatio as calculateStabilityRatioUtil,
+  calculateStabilityComponents as calculateStabilityComponentsUtil,
+} from '../utils/harmonicField';
 
+// TODO: Move these to config/constants.ts (following same pattern as NUDGE_GRID)
 // Level 1: Fine grid resolution
 const FINE_GRID_RESOLUTION = 10;
 const FINE_REFINEMENT_RADIUS = 150;
@@ -92,6 +99,10 @@ export class SimulatorMode {
     // Calculate projections for stability display
     const projectionResult = this.calculateProjections(x, y, contributions);
 
+    // Calculate stability components using the shared function
+    const params = this.appState.getState().simulatorHyperparameters;
+    const stabilityResult = calculateStabilityComponentsUtil(x, y, contributions, params);
+
     this.appState.dispatch('SET_SIMULATOR_CLICKED', {
       x,
       y,
@@ -100,7 +111,9 @@ export class SimulatorMode {
       projections: projectionResult.projections,
       closestProjection: projectionResult.closest,
       secondClosestProjection: projectionResult.secondClosest,
-      stabilityRatio: projectionResult.ratio,
+      stabilityRatio: stabilityResult.stability,
+      stabilityR: stabilityResult.ratio,
+      stabilityG: stabilityResult.gaussian,
     });
     this.renderClickMarker();
     this.renderContributionLines();
@@ -284,278 +297,18 @@ export class SimulatorMode {
 
   calculateField(x: number, y: number): { field: HarmonicField; contributions: TowerContribution[] } {
     const state = this.appState.getState();
-    const params = state.simulatorHyperparameters;
-
-    // Start with background value for each dimension
-    const dimensions = new Array(9).fill(params.backgroundValue);
-
-    // Get contributing towers using barrier algorithm
-    const contributingTowers = this.getContributingTowers(x, y);
-
-    // Calculate contributions per dimension (by tower type)
-    const dimensionContributions = new Array(9).fill(0);
-
-    // Reference distance for normalization (at this distance, contribution = power)
-    const referenceDistance = 100;
-
-    // Build contribution list and calculate field
-    const towerContributions: TowerContribution[] = [];
-
-    for (const { tower, distance } of contributingTowers) {
-      // Avoid division by zero; very close = very high contribution
-      const effectiveDistance = Math.max(distance, 1);
-
-      // Power-law falloff with reference distance normalization
-      const normalizedDistance = effectiveDistance / referenceDistance;
-      const contribution = tower.power / Math.pow(normalizedDistance, params.distanceDamping);
-
-      towerContributions.push({
-        tower,
-        distance,
-        contribution,
-      });
-    }
-
-    // Calculate per-tower dampening
-    const dampeningMap = this.calculatePerTowerDampening(towerContributions, params);
-
-    // Apply dampening to each tower's contribution and sum into dimensions
-    for (const tc of towerContributions) {
-      const dampening = dampeningMap.get(tc) ?? 1;
-      tc.dampening = dampening;
-      tc.dampenedContribution = tc.contribution * dampening;
-
-      const dimIndex = TOWER_TYPE_INDEX[tc.tower.type];
-      if (dimIndex !== undefined) {
-        dimensionContributions[dimIndex] += tc.dampenedContribution;
-      }
-    }
-
-    // Add contributions to base
-    for (let i = 0; i < 9; i++) {
-      dimensions[i] += dimensionContributions[i];
-    }
-
-    return { field: { dimensions }, contributions: towerContributions };
-  }
-
-  // Calculate per-tower dampening using reverse cascading (largest group first)
-  private calculatePerTowerDampening(
-    contributions: TowerContribution[],
-    params: SimulatorHyperparameters
-  ): Map<TowerContribution, number> {
-    const result = new Map<TowerContribution, number>();
-
-    if (contributions.length === 0) return result;
-
-    // Sort by contribution descending
-    const sorted = contributions.slice().sort((a, b) => b.contribution - a.contribution);
-
-    // Initialize all dampening factors to 1
-    for (const tc of sorted) {
-      result.set(tc, 1.0);
-    }
-
-    if (sorted.length === 1) return result;
-
-    const topContribution = sorted[0].contribution;
-    if (topContribution === 0) return result;
-
-    // Find the largest cohesive group (start from all, shrink until cohesive)
-    let maxCoalitionSize = 1;
-    for (let k = sorted.length; k >= 2; k--) {
-      const group = sorted.slice(0, k);
-      const cohesion = this.computeGroupCohesion(group);
-      if (cohesion > 0.9) {
-        maxCoalitionSize = k;
-        break;
-      }
-    }
-
-    // Process from largest group down to smallest
-    // But reduce dampening impact if a larger group was already cohesive
-    for (let k = sorted.length - 1; k >= 1; k--) {
-      const leaders = sorted.slice(0, k);
-      const followers = sorted.slice(k);
-
-      // Compute cohesion of the leading group
-      const cohesion = this.computeGroupCohesion(leaders);
-
-      // The "trailing gap" baseline is the weakest leader
-      const leaderFloor = leaders[leaders.length - 1].contribution;
-
-      // Coalition strength: larger cohesive groups dampen more
-      // But if we're inside a larger cohesive coalition, reduce impact
-      const isInsideLargerCoalition = k < maxCoalitionSize;
-      const cohesionDiscount = isInsideLargerCoalition ? 0.3 : 1.0;
-      const coalitionStrength = cohesion * Math.log2(k + 1) * cohesionDiscount;
-
-      // Apply dampening to all followers
-      for (const follower of followers) {
-        const followerGap = (leaderFloor - follower.contribution) / topContribution;
-
-        // Dampening for this round
-        const roundDampening = followerGap * coalitionStrength * params.dampeningStrength;
-
-        // Multiply into accumulated dampening
-        const currentDampening = result.get(follower) ?? 1;
-        result.set(follower, currentDampening * (1 - Math.min(roundDampening, 0.5)));
-      }
-    }
-
-    // Apply minimum dampening floor
-    for (const [tc, damp] of result) {
-      result.set(tc, Math.max(damp, params.minDampening));
-    }
-
-    return result;
-  }
-
-  // Compute how cohesive a group is (0 = spread out, 1 = all equal)
-  private computeGroupCohesion(group: TowerContribution[]): number {
-    if (group.length <= 1) return 1;
-
-    const contributions = group.map(g => g.contribution);
-    const total = contributions.reduce((sum, c) => sum + c, 0);
-
-    if (total === 0) return 1;
-
-    const probs = contributions.map(c => c / total);
-
-    // Shannon entropy
-    const entropy = -probs.reduce((sum, p) => sum + (p > 0 ? p * Math.log2(p) : 0), 0);
-    const maxEntropy = Math.log2(group.length);
-
-    // Normalized entropy: 1 = all equal (max cohesion), 0 = one dominant
-    return maxEntropy > 0 ? entropy / maxEntropy : 1;
-  }
-
-  // Check if two line segments intersect (proper intersection, not just touching)
-  private segmentsIntersect(
-    p1: { x: number; y: number },
-    p2: { x: number; y: number },
-    p3: { x: number; y: number },
-    p4: { x: number; y: number }
-  ): boolean {
-    // Calculate direction vectors
-    const d1x = p2.x - p1.x;
-    const d1y = p2.y - p1.y;
-    const d2x = p4.x - p3.x;
-    const d2y = p4.y - p3.y;
-
-    // Cross product of directions
-    const cross = d1x * d2y - d1y * d2x;
-
-    // Parallel lines don't intersect (or are collinear)
-    if (Math.abs(cross) < 1e-10) return false;
-
-    // Calculate intersection parameters
-    const dx = p3.x - p1.x;
-    const dy = p3.y - p1.y;
-
-    const t = (dx * d2y - dy * d2x) / cross;
-    const u = (dx * d1y - dy * d1x) / cross;
-
-    // Check if intersection is within both segments (exclusive of endpoints)
-    const epsilon = 1e-6;
-    return t > epsilon && t < 1 - epsilon && u > epsilon && u < 1 - epsilon;
-  }
-
-  // Check if candidate tower is blocked by a barrier segment
-  private isBlockedByBarrier(
-    point: { x: number; y: number },
-    candidate: { x: number; y: number },
-    barrierStart: { x: number; y: number },
-    barrierEnd: { x: number; y: number }
-  ): boolean {
-    // Condition 1: Line PC must intersect segment XY
-    if (!this.segmentsIntersect(point, candidate, barrierStart, barrierEnd)) {
-      return false;
-    }
-
-    // Condition 2: Distance(P, C) must be greater than length of barrier XY
-    const distPC = Math.sqrt(
-      (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2
-    );
-    const barrierLength = Math.sqrt(
-      (barrierEnd.x - barrierStart.x) ** 2 + (barrierEnd.y - barrierStart.y) ** 2
-    );
-
-    return distPC > barrierLength;
-  }
-
-  // Get contributing towers using the barrier algorithm
-  private getContributingTowers(
-    x: number,
-    y: number
-  ): { tower: Tower; distance: number }[] {
-    const state = this.appState.getState();
     const { towers } = state.towers;
-
-    if (towers.length === 0) return [];
-
-    // Calculate distances and sort by distance
-    const towersWithDistance = towers.map(tower => ({
-      tower,
-      distance: Math.sqrt((x - tower.x) ** 2 + (y - tower.y) ** 2),
-    }));
-    towersWithDistance.sort((a, b) => a.distance - b.distance);
-
-    // Take only first MAX_TOWER_CANDIDATES candidates
-    const candidates = towersWithDistance.slice(0, MAX_TOWER_CANDIDATES);
-
-    const point = { x, y };
-    const contributors: { tower: Tower; distance: number }[] = [];
-    const barriers: { start: { x: number; y: number }; end: { x: number; y: number } }[] = [];
-
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
-      const candidatePos = { x: candidate.tower.x, y: candidate.tower.y };
-
-      // First 2 towers always contribute
-      if (i < 2) {
-        contributors.push(candidate);
-
-        // After 2nd tower, create the first barrier
-        if (i === 1) {
-          barriers.push({
-            start: { x: contributors[0].tower.x, y: contributors[0].tower.y },
-            end: { x: contributors[1].tower.x, y: contributors[1].tower.y },
-          });
-        }
-        continue;
-      }
-
-      // Check if blocked by any existing barrier
-      let blocked = false;
-      for (const barrier of barriers) {
-        if (this.isBlockedByBarrier(point, candidatePos, barrier.start, barrier.end)) {
-          blocked = true;
-          break;
-        }
-      }
-
-      if (!blocked) {
-        // Add new barriers connecting to all previous contributors
-        for (const prev of contributors) {
-          barriers.push({
-            start: { x: prev.tower.x, y: prev.tower.y },
-            end: candidatePos,
-          });
-        }
-        contributors.push(candidate);
-      }
-    }
-
-    return contributors;
+    const params = state.simulatorHyperparameters;
+    return calculateFieldAt(x, y, towers, params);
   }
 
   // Calculate projections of point P onto lines formed by all pairs of contributors
+  // Returns projection geometry only; stability is calculated separately via calculateStabilityComponents
   calculateProjections(
     x: number,
     y: number,
     contributions: TowerContribution[]
-  ): { projections: ProjectionInfo[]; closest?: ProjectionInfo; secondClosest?: ProjectionInfo; ratio?: number } {
+  ): { projections: ProjectionInfo[]; closest?: ProjectionInfo; secondClosest?: ProjectionInfo } {
     const projections: ProjectionInfo[] = [];
 
     // Need at least 2 contributors to form a pair
@@ -604,54 +357,13 @@ export class SimulatorMode {
     const closest = sorted[0];
     const secondClosest = sorted.length > 1 ? sorted[1] : sorted[0];
 
-    // Calculate stability ratio (closest / second closest)
-    // 0 = on a line, 1 = equidistant to two closest lines
-    const ratio = secondClosest.distance > 0 ? closest.distance / secondClosest.distance : 1;
-
-    return { projections, closest, secondClosest, ratio };
+    return { projections, closest, secondClosest };
   }
 
   // Calculate stability ratio for heatmap rendering (lightweight, no full projection list)
   private calculateStabilityRatio(x: number, y: number, contributions: TowerContribution[]): number {
-    if (contributions.length < 2) {
-      return 1; // No pairs = stable (neutral)
-    }
-
-    const distances: number[] = [];
-
-    for (let i = 0; i < contributions.length; i++) {
-      for (let j = i + 1; j < contributions.length; j++) {
-        const towerA = contributions[i].tower;
-        const towerB = contributions[j].tower;
-
-        // Project point onto line through towerA and towerB
-        const lineX = towerB.x - towerA.x;
-        const lineY = towerB.y - towerA.y;
-        const toPX = x - towerA.x;
-        const toPY = y - towerA.y;
-
-        const lineLengthSq = lineX * lineX + lineY * lineY;
-        if (lineLengthSq === 0) continue;
-
-        const t = (toPX * lineX + toPY * lineY) / lineLengthSq;
-        const projX = towerA.x + t * lineX;
-        const projY = towerA.y + t * lineY;
-
-        const distance = Math.sqrt((x - projX) ** 2 + (y - projY) ** 2);
-        distances.push(distance);
-      }
-    }
-
-    if (distances.length < 2) {
-      return 1; // Only one projection = stable
-    }
-
-    // Find the two smallest distances
-    distances.sort((a, b) => a - b);
-    const closest = distances[0];
-    const secondClosest = distances[1];
-
-    return secondClosest > 0 ? closest / secondClosest : 1;
+    const params = this.appState.getState().simulatorHyperparameters;
+    return calculateStabilityRatioUtil(x, y, contributions, params);
   }
 
   private renderHeatmap(): void {
@@ -801,13 +513,20 @@ export class SimulatorMode {
       return this.valueToColor(total / 3); // Normalize to similar scale
     }
 
+    if (activeLayer === 'low-total') {
+      // Sum of all dimensions, but only show tiles below threshold
+      const total = this.getTotalIntensity(field);
+      if (total > LOW_TOTAL_THRESHOLD) return null; // Don't render high-intensity tiles
+      return this.lowTotalValueToColor(total);
+    }
+
     if (activeLayer === 'dominant') {
       // Color by dominant dimension
       const dominant = this.getDominantDimension(field);
       return dominant.color;
     }
 
-    if (activeLayer === 'dominant-safe') {
+    if (activeLayer === 'balance') {
       // Dominant dimension, but show frontier areas with gray
       const stability = this.getFieldStability(field);
       if (stability >= 2) {
@@ -847,90 +566,36 @@ export class SimulatorMode {
   }
 
   private stabilityRatioToColor(ratio: number): string {
-    // Map ratio 0-1 to color scale
     // 0 = contested (red), 1 = stable (blue)
     const t = Math.max(0, Math.min(1, ratio));
-
-    const colorIndex = t * (STABILITY_COLORS.length - 1);
-    const lowerIndex = Math.floor(colorIndex);
-    const upperIndex = Math.min(lowerIndex + 1, STABILITY_COLORS.length - 1);
-    const blend = colorIndex - lowerIndex;
-
-    const lowerColor = this.hexToRgb(STABILITY_COLORS[lowerIndex]);
-    const upperColor = this.hexToRgb(STABILITY_COLORS[upperIndex]);
-
-    const r = Math.round(lowerColor.r + blend * (upperColor.r - lowerColor.r));
-    const g = Math.round(lowerColor.g + blend * (upperColor.g - lowerColor.g));
-    const b = Math.round(lowerColor.b + blend * (upperColor.b - lowerColor.b));
-
-    return `rgb(${r}, ${g}, ${b})`;
+    return this.interpolateColors(t, STABILITY_COLORS);
   }
 
   // Calculate field stability: how many dimensions are in the leading group
   // Returns 1 for single dominant dimension, 2+ for frontier (multiple competing leaders)
   getFieldStability(field: HarmonicField): number {
-    const dimensions = field.dimensions;
-
-    // Sort dimensions descending
-    const sorted = dimensions.slice().sort((a, b) => b - a);
-    const top = sorted[0];
-
-    if (top === 0) return 1; // No field, consider stable
-
-    // Count how many dimensions are in the "leading coalition"
-    // Using entropy-based cohesion: add dimensions to coalition while they stay cohesive
-    let coalitionSize = 1;
-
-    for (let k = 2; k <= sorted.length; k++) {
-      const group = sorted.slice(0, k);
-      const cohesion = this.computeDimensionCohesion(group);
-
-      // If adding this dimension keeps high cohesion, it's part of the coalition
-      // High cohesion (>0.99) means the dimensions are close to each other
-      if (cohesion > 0.99) {
-        coalitionSize = k;
-      } else {
-        // Once cohesion drops, stop expanding the coalition
-        break;
-      }
-    }
-
-    return coalitionSize;
+    return getFieldStabilityUtil(field);
   }
 
-  // Compute cohesion for dimension values (similar to tower cohesion but for raw values)
-  private computeDimensionCohesion(values: number[]): number {
-    if (values.length <= 1) return 1;
-
-    const total = values.reduce((sum, v) => sum + v, 0);
-    if (total === 0) return 1;
-
-    const probs = values.map(v => v / total);
-
-    // Shannon entropy
-    const entropy = -probs.reduce((sum, p) => sum + (p > 0 ? p * Math.log2(p) : 0), 0);
-    const maxEntropy = Math.log2(values.length);
-
-    // Normalized entropy: 1 = all equal (max cohesion), 0 = one dominant
-    return maxEntropy > 0 ? entropy / maxEntropy : 1;
+  private lowTotalValueToColor(value: number): string {
+    const t = Math.max(0, Math.min(1, value / LOW_TOTAL_THRESHOLD));
+    return this.interpolateColors(t, HEATMAP_COLORS);
   }
 
   private valueToColor(value: number): string {
-    // Map field value to color scale
     // Typical values: background (30) to ~500+ near towers
-    const minVal = 0;
-    const maxVal = 500; // Normalize to reasonable range
+    const t = Math.max(0, Math.min(1, value / 500));
+    return this.interpolateColors(t, HEATMAP_COLORS);
+  }
 
-    const t = Math.max(0, Math.min(1, (value - minVal) / (maxVal - minVal)));
-
-    // Interpolate through color scale
-    const colorIndex = t * (HEATMAP_COLORS.length - 1);
+  private interpolateColors(t: number, colors: string[]): string {
+    const colorIndex = t * (colors.length - 1);
     const lowerIndex = Math.floor(colorIndex);
-    const upperIndex = Math.min(lowerIndex + 1, HEATMAP_COLORS.length - 1);
+    const upperIndex = Math.min(lowerIndex + 1, colors.length - 1);
     const blend = colorIndex - lowerIndex;
 
-    const lowerColor = this.hexToRgb(HEATMAP_COLORS[lowerIndex]);
-    const upperColor = this.hexToRgb(HEATMAP_COLORS[upperIndex]);
+    const lowerColor = this.hexToRgb(colors[lowerIndex]);
+    const upperColor = this.hexToRgb(colors[upperIndex]);
 
     const r = Math.round(lowerColor.r + blend * (upperColor.r - lowerColor.r));
     const g = Math.round(lowerColor.g + blend * (upperColor.g - lowerColor.g));

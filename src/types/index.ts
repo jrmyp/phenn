@@ -21,12 +21,24 @@ export interface CoastlineData {
 
 // ============ Settlement Types ============
 
+export type SettlementStability = 'high' | 'medium' | 'low';
+export type SettlementBalance = 'dominated' | 'frontier' | 'tripoint';
+export type SettlementTerrain = 'nice' | 'difficult' | 'hostile';
+export type SettlementViewMode = 'default' | 'nudge-fine' | 'nudge-finer';
+
+export interface SettlementCanonicalStatus {
+  stability?: SettlementStability;
+  balance?: SettlementBalance;
+  terrain?: SettlementTerrain;
+}
+
 export interface Settlement {
   id: string;
   x: number;
   y: number;
   name: string;  // Can be empty for size 0
   size: number;  // 0 = hollow circle, 1+ = filled circles of increasing size
+  canonicalStatus?: SettlementCanonicalStatus;
 }
 
 export interface SettlementData {
@@ -89,6 +101,7 @@ export interface SimulatorHyperparameters {
   distanceDamping: number;       // Power-law exponent, default: 1.5
   dampeningStrength: number;     // Dampening multiplier, default: 0.6
   minDampening: number;          // Floor for dampening, default: 0.1
+  stabilityGaussianVariance: number;  // Variance for Gaussian term in stability, default: 5
 }
 
 export interface SimulatorClickedPoint {
@@ -99,7 +112,9 @@ export interface SimulatorClickedPoint {
   projections?: ProjectionInfo[];      // All line projections for stability display
   closestProjection?: ProjectionInfo;  // Projection nearest to clicked point
   secondClosestProjection?: ProjectionInfo; // Second nearest projection
-  stabilityRatio?: number;             // closest_distance / second_closest_distance
+  stabilityRatio?: number;             // S = max(R, G)
+  stabilityR?: number;                 // R = closest_distance / second_closest_distance
+  stabilityG?: number;                 // G = gaussian of second closest distance
 }
 
 // Refinement point for finer mesh resolution
@@ -114,8 +129,9 @@ export interface RefinementPoint {
 export type SimulatorLayerType =
   | number           // 0-8 for individual tower type dimensions
   | 'total'          // Sum of all dimensions
+  | 'low-total'      // Sum of all dimensions, only showing tiles in 0-500 range
   | 'dominant'       // Color by dominant dimension (strict winner)
-  | 'dominant-safe'  // Dominant dimension, but frontier areas shown differently
+  | 'balance'        // Dominant dimension, but frontier areas shown differently
   | 'contributor-count'  // Number of contributing towers (1-10 scale)
   | 'stability'      // Ratio of distance to closest/furthest barycenter
   | null;            // No heatmap
@@ -156,6 +172,7 @@ export interface AppStateData {
   selectedTowerPower: number;
   // Settlement placement state
   selectedSettlementSize: number;
+  settlementViewMode: SettlementViewMode;
   // Road placement state
   selectedRoadSafe: boolean;
   pendingRoadStartId: string | null;  // First settlement clicked when creating road
@@ -193,6 +210,7 @@ export type ActionType =
   | 'REMOVE_SETTLEMENT'
   | 'UPDATE_SETTLEMENT'
   | 'SET_SETTLEMENT_SIZE'
+  | 'SET_SETTLEMENT_VIEW_MODE'
   | 'ADD_ROAD'
   | 'REMOVE_ROAD'
   | 'UPDATE_ROAD'

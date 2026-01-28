@@ -255,6 +255,7 @@ button:disabled {
   font-size: 0.8rem;
   color: #888;
   font-style: italic;
+  margin-top: 0.5rem;
 }
 
 /* Checkbox styling */
@@ -308,9 +309,11 @@ button:disabled {
 
 /* Field display */
 .field-display {
-  margin-top: 1rem;
-  padding-top: 0.75rem;
+  margin-top: 0.75rem;
   border-top: 1px solid #444;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid #444;
 }
 
 .field-display h3 {
@@ -352,6 +355,20 @@ button:disabled {
   justify-content: space-between;
   font-size: 0.8rem;
   color: #aaa;
+}
+
+/* Stability info */
+.stability-info {
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+.stability-terms {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: #888;
+  margin: 0.25rem 0;
 }
 
 /* Contributing towers list */
@@ -403,4 +420,80 @@ button:disabled {
   border-radius: 3px;
   font-size: 0.65rem;
   margin-left: 0.25rem;
+}
+
+/* Settlement status comparison */
+#mode-options h3 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #aaa;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.status-comparison {
+  background: #333;
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+
+.status-header {
+  display: grid;
+  grid-template-columns: 70px 80px 70px 24px;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  color: #888;
+  padding-bottom: 0.375rem;
+  margin-bottom: 0.375rem;
+  border-bottom: 1px solid #444;
+}
+
+.status-row {
+  display: grid;
+  grid-template-columns: 70px 80px 70px 24px;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.375rem;
+}
+
+.status-row:last-child {
+  margin-bottom: 0;
+}
+
+.status-label {
+  font-size: 0.75rem;
+  color: #aaa;
+}
+
+.status-row select {
+  padding: 0.25rem;
+  background: #2a2a2a;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #e0e0e0;
+  font-size: 0.7rem;
+}
+
+.simulated-value {
+  font-size: 0.75rem;
+  color: #888;
+  font-style: italic;
+}
+
+.match-indicator {
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.875rem;
+}
+
+.match-indicator.match {
+  color: #4caf50;
+}
+
+.match-indicator.mismatch {
+  color: #f44336;
+}
+
+.match-indicator.unset {
+  color: #666;
 }

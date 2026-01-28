@@ -6,8 +6,20 @@ import { SettlementMode } from './annotations/SettlementMode';
 import { RoadMode } from './annotations/RoadMode';
 import { SimulatorMode } from './annotations/SimulatorMode';
 import { loadFromDataFolder, createSaveData, downloadJson } from './utils/persistence';
-import { TowerType, SimulatorHyperparameters, SimulatorClickedPoint, SimulatorLayerType } from './types';
+import {
+  TowerType,
+  SimulatorHyperparameters,
+  SimulatorClickedPoint,
+  SimulatorLayerType,
+  SettlementStability,
+  SettlementBalance,
+  SettlementTerrain,
+  SettlementCanonicalStatus,
+  SettlementViewMode,
+} from './types';
 import { TOWER_SIZE, SETTLEMENT_SIZE, DIMENSION_NAMES, TOWER_COLORS } from './config/constants';
+import { computeSettlementSimulatedStatus } from './utils/harmonicField';
+import { hexagonifyTowers } from './utils/hexagonify';
 
 // Initialize the application
 async function init(): Promise<void> {
@@ -142,6 +154,8 @@ async function init(): Promise<void> {
   let prevSelectedTowerId: string | null = null;
   let prevSelectedSettlementId: string | null = null;
   let prevSimulatorClickedPoint: SimulatorClickedPoint | null = null;
+  let prevSettlementViewMode: SettlementViewMode = 'default';
+  let prevSelectedSettlementCanonical: string | null = null;  // JSON string of canonical status
 
   // Update commit/cancel button states and refresh UI based on state changes
   appState.subscribe(() => {
@@ -174,9 +188,21 @@ async function init(): Promise<void> {
       showModeOptions('tower');
     }
 
-    // Refresh settlement options UI when selection changes
-    if (state.currentMode === 'settlement-position' && state.selectedSettlementId !== prevSelectedSettlementId) {
+    // Refresh settlement options UI when selection, view mode, or selected settlement's canonical status changes
+    const selectedSettlement = state.selectedSettlementId
+      ? state.settlements.settlements.find(s => s.id === state.selectedSettlementId)
+      : null;
+    const currentCanonical = selectedSettlement?.canonicalStatus
+      ? JSON.stringify(selectedSettlement.canonicalStatus)
+      : null;
+
+    if (state.currentMode === 'settlement-position' &&
+        (state.selectedSettlementId !== prevSelectedSettlementId ||
+         state.settlementViewMode !== prevSettlementViewMode ||
+         currentCanonical !== prevSelectedSettlementCanonical)) {
       prevSelectedSettlementId = state.selectedSettlementId;
+      prevSettlementViewMode = state.settlementViewMode;
+      prevSelectedSettlementCanonical = currentCanonical;
       showModeOptions('settlement');
     }
 
@@ -350,9 +376,32 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
       : null;
 
     if (selectedSettlement) {
+      // Compute simulated status
+      const simStatus = computeSettlementSimulatedStatus(
+        selectedSettlement.x,
+        selectedSettlement.y,
+        state.towers.towers,
+        state.simulatorHyperparameters
+      );
+
+      const canonical = selectedSettlement.canonicalStatus || {};
+
+      // Match indicators
+      const stabilityMatch = canonical.stability === simStatus.stability;
+      const balanceMatch = canonical.balance === simStatus.balance;
+
       // Editing existing settlement
+      const viewMode = state.settlementViewMode;
       optionsEl.innerHTML = `
         <h2>Edit Settlement</h2>
+        <div class="option-group">
+          <label>View:</label>
+          <div class="layer-buttons">
+            <button class="layer-btn ${viewMode === 'default' ? 'active' : ''}" data-view="default">Default</button>
+            <button class="layer-btn ${viewMode === 'nudge-fine' ? 'active' : ''}" data-view="nudge-fine">Nudge (fine)</button>
+            <button class="layer-btn ${viewMode === 'nudge-finer' ? 'active' : ''}" data-view="nudge-finer">Nudge (finer)</button>
+          </div>
+        </div>
         <div class="option-group">
           <label for="settlement-name">Name:</label>
           <input type="text" id="settlement-name" value="${selectedSettlement.name}" placeholder="Enter name..." />
@@ -361,15 +410,72 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
           <label for="settlement-size">Size: <span id="size-value">${selectedSettlement.size}</span></label>
           <input type="range" id="settlement-size" min="${SETTLEMENT_SIZE.minSize}" max="${SETTLEMENT_SIZE.maxSize}" value="${selectedSettlement.size}" />
         </div>
+
+        <h3>Status</h3>
+        <div class="status-comparison">
+          <div class="status-header">
+            <span></span>
+            <span>Lore</span>
+            <span>Sim</span>
+            <span></span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Stability:</span>
+            <select id="canonical-stability">
+              <option value="">--</option>
+              <option value="high" ${canonical.stability === 'high' ? 'selected' : ''}>High</option>
+              <option value="medium" ${canonical.stability === 'medium' ? 'selected' : ''}>Medium</option>
+              <option value="low" ${canonical.stability === 'low' ? 'selected' : ''}>Low</option>
+            </select>
+            <span class="simulated-value">${simStatus.stability}</span>
+            <span class="match-indicator ${stabilityMatch ? 'match' : (canonical.stability ? 'mismatch' : 'unset')}">${stabilityMatch ? '✓' : (canonical.stability ? '✗' : '-')}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Balance:</span>
+            <select id="canonical-balance">
+              <option value="">--</option>
+              <option value="dominated" ${canonical.balance === 'dominated' ? 'selected' : ''}>Dominated</option>
+              <option value="frontier" ${canonical.balance === 'frontier' ? 'selected' : ''}>Frontier</option>
+              <option value="tripoint" ${canonical.balance === 'tripoint' ? 'selected' : ''}>Tripoint</option>
+            </select>
+            <span class="simulated-value">${simStatus.balance}</span>
+            <span class="match-indicator ${balanceMatch ? 'match' : (canonical.balance ? 'mismatch' : 'unset')}">${balanceMatch ? '✓' : (canonical.balance ? '✗' : '-')}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Terrain:</span>
+            <select id="canonical-terrain">
+              <option value="">--</option>
+              <option value="nice" ${canonical.terrain === 'nice' ? 'selected' : ''}>Nice</option>
+              <option value="difficult" ${canonical.terrain === 'difficult' ? 'selected' : ''}>Difficult</option>
+              <option value="hostile" ${canonical.terrain === 'hostile' ? 'selected' : ''}>Hostile</option>
+            </select>
+            <span class="simulated-value">n/a</span>
+            <span class="match-indicator unset">-</span>
+          </div>
+        </div>
+
         <div id="action-buttons">
           <button id="apply-settlement-btn">Apply</button>
           <button id="deselect-settlement-btn">Deselect</button>
+          ${selectedSettlement.name === 'Edissane' ? '<button id="hexagonify-towers-btn">Hexagonify Towers</button>' : ''}
         </div>
       `;
+
+      // Wire up view mode buttons
+      const viewButtons = optionsEl.querySelectorAll('.layer-btn[data-view]');
+      viewButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const view = (btn as HTMLElement).dataset.view as SettlementViewMode;
+          appState.dispatch('SET_SETTLEMENT_VIEW_MODE', view);
+          viewButtons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      });
 
       // Store pending edits locally
       let pendingName = selectedSettlement.name;
       let pendingSize = selectedSettlement.size;
+      let pendingCanonical: SettlementCanonicalStatus = { ...canonical };
 
       const nameInput = document.getElementById('settlement-name') as HTMLInputElement;
       nameInput.addEventListener('input', () => {
@@ -383,9 +489,31 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
         sizeValue.textContent = pendingSize.toString();
       });
 
+      // Canonical status dropdowns
+      const stabilitySelect = document.getElementById('canonical-stability') as HTMLSelectElement;
+      stabilitySelect.addEventListener('change', () => {
+        pendingCanonical.stability = stabilitySelect.value as SettlementStability || undefined;
+      });
+
+      const balanceSelect = document.getElementById('canonical-balance') as HTMLSelectElement;
+      balanceSelect.addEventListener('change', () => {
+        pendingCanonical.balance = balanceSelect.value as SettlementBalance || undefined;
+      });
+
+      const terrainSelect = document.getElementById('canonical-terrain') as HTMLSelectElement;
+      terrainSelect.addEventListener('change', () => {
+        pendingCanonical.terrain = terrainSelect.value as SettlementTerrain || undefined;
+      });
+
       const applyBtn = document.getElementById('apply-settlement-btn') as HTMLButtonElement;
       applyBtn.addEventListener('click', () => {
-        appState.dispatch('UPDATE_SETTLEMENT', { ...selectedSettlement, name: pendingName, size: pendingSize });
+        const updatedSettlement = {
+          ...selectedSettlement,
+          name: pendingName,
+          size: pendingSize,
+          canonicalStatus: pendingCanonical,
+        };
+        appState.dispatch('UPDATE_SETTLEMENT', updatedSettlement);
         updateStatus('Settlement updated.');
       });
 
@@ -393,15 +521,66 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
       deselectBtn.addEventListener('click', () => {
         appState.dispatch('SELECT_SETTLEMENT', null);
       });
+
+      // Hexagonify button (only present for Edissane)
+      const hexagonifyBtn = document.getElementById('hexagonify-towers-btn');
+      if (hexagonifyBtn) {
+        hexagonifyBtn.addEventListener('click', () => {
+          const currentState = appState.getState();
+          const settlement = currentState.settlements.settlements.find(
+            s => s.id === currentState.selectedSettlementId
+          );
+          if (!settlement) return;
+
+          const assignments = hexagonifyTowers(
+            settlement.x,
+            settlement.y,
+            currentState.towers.towers
+          );
+
+          if (assignments.length < 6) {
+            updateStatus('Need at least 6 towers near Edissane.');
+            return;
+          }
+
+          // Move each tower (skip easternmost which doesn't move)
+          for (const a of assignments) {
+            if (a.tower.x !== a.newX || a.tower.y !== a.newY) {
+              appState.dispatch('UPDATE_TOWER', { ...a.tower, x: a.newX, y: a.newY });
+            }
+          }
+          updateStatus('Towers arranged in hexagon.');
+        });
+      }
     } else {
       // Placing new settlement
+      const viewMode = state.settlementViewMode;
       optionsEl.innerHTML = `
         <h2>Settlement Options</h2>
+        <div class="option-group">
+          <label>View:</label>
+          <div class="layer-buttons">
+            <button class="layer-btn ${viewMode === 'default' ? 'active' : ''}" data-view="default">Default</button>
+            <button class="layer-btn ${viewMode === 'nudge-fine' ? 'active' : ''}" data-view="nudge-fine">Nudge (fine)</button>
+            <button class="layer-btn ${viewMode === 'nudge-finer' ? 'active' : ''}" data-view="nudge-finer">Nudge (finer)</button>
+          </div>
+        </div>
         <div class="option-group">
           <label for="settlement-size">Size: <span id="size-value">${state.selectedSettlementSize}</span></label>
           <input type="range" id="settlement-size" min="${SETTLEMENT_SIZE.minSize}" max="${SETTLEMENT_SIZE.maxSize}" value="${state.selectedSettlementSize}" />
         </div>
       `;
+
+      // Wire up view mode buttons
+      const viewButtons = optionsEl.querySelectorAll('.layer-btn[data-view]');
+      viewButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const view = (btn as HTMLElement).dataset.view as SettlementViewMode;
+          appState.dispatch('SET_SETTLEMENT_VIEW_MODE', view);
+          viewButtons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      });
 
       const sizeSlider = document.getElementById('settlement-size') as HTMLInputElement;
       const sizeValue = document.getElementById('size-value') as HTMLSpanElement;
@@ -445,8 +624,9 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
     // Special layer buttons
     const specialLayers: { key: SimulatorLayerType; label: string; color: string }[] = [
       { key: 'total', label: 'Total', color: '#888888' },
+      { key: 'low-total', label: 'Low Total', color: '#666666' },
       { key: 'dominant', label: 'Dominant', color: '#ffffff' },
-      { key: 'dominant-safe', label: 'Safe Only', color: '#aaaaaa' },
+      { key: 'balance', label: 'Balance', color: '#aaaaaa' },
       { key: 'contributor-count', label: 'Contributors', color: '#ff00ff' },
       { key: 'stability', label: 'Stability', color: '#00ff88' },
     ];
@@ -458,14 +638,18 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
     optionsEl.innerHTML = `
       <h2>Harmonic Simulator</h2>
       <div class="option-group">
-        <label>Layer:</label>
+        <h3>Special layers</h3>
         <div class="layer-buttons">
           <button class="layer-btn ${activeLayer === null ? 'active' : ''}" data-layer="none">None</button>
           ${specialButtonsHtml}
         </div>
+        <h3>Dimension layers</h3>
         <div class="layer-buttons">
           ${dimensionButtonsHtml}
         </div>
+      </div>
+      <div id="field-display" class="field-display">
+        <p class="mode-hint">Click to inspect. Alt+click to add/remove refinement zone.</p>
       </div>
       <div class="option-group">
         <label>Background: <span id="bg-value">${params.backgroundValue}</span></label>
@@ -479,8 +663,9 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
         <label>Dampening strength: <span id="dampening-strength-value">${params.dampeningStrength.toFixed(1)}</span></label>
         <input type="range" id="sim-dampening-strength" min="0" max="200" value="${params.dampeningStrength * 10}" />
       </div>
-      <div id="field-display" class="field-display">
-        <p class="mode-hint">Click to inspect. Alt+click to add/remove refinement zone.</p>
+      <div class="option-group">
+        <label>Stability Gaussian σ: <span id="gaussian-variance-value">${params.stabilityGaussianVariance}</span></label>
+        <input type="range" id="sim-gaussian-variance" min="1" max="50" value="${params.stabilityGaussianVariance}" />
       </div>
     `;
 
@@ -492,7 +677,7 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
         let newLayer: SimulatorLayerType;
         if (layerVal === 'none') {
           newLayer = null;
-        } else if (layerVal === 'total' || layerVal === 'dominant' || layerVal === 'dominant-safe' || layerVal === 'contributor-count' || layerVal === 'stability') {
+        } else if (layerVal === 'total' || layerVal === 'low-total' || layerVal === 'dominant' || layerVal === 'balance' || layerVal === 'contributor-count' || layerVal === 'stability') {
           newLayer = layerVal;
         } else {
           newLayer = parseInt(layerVal!, 10);
@@ -527,6 +712,14 @@ function showModeOptions(mode: string, simulatorModeRef?: SimulatorMode): void {
       const val = parseInt(dampeningStrengthSlider.value, 10) / 10;
       dampeningStrengthValue.textContent = val.toFixed(1);
       updateSimulatorParams({ dampeningStrength: val });
+    });
+
+    const gaussianVarianceSlider = document.getElementById('sim-gaussian-variance') as HTMLInputElement;
+    const gaussianVarianceValue = document.getElementById('gaussian-variance-value') as HTMLSpanElement;
+    gaussianVarianceSlider.addEventListener('input', () => {
+      const val = parseInt(gaussianVarianceSlider.value, 10);
+      gaussianVarianceValue.textContent = val.toString();
+      updateSimulatorParams({ stabilityGaussianVariance: val });
     });
 
     // Update field display if there's already a clicked point
@@ -590,10 +783,12 @@ function updateSimulatorFieldDisplay(simulatorModeRef: SimulatorMode): void {
   const projections = clicked.projections || [];
   const closest = clicked.closestProjection;
   const secondClosest = clicked.secondClosestProjection;
-  const stabilityRatio = clicked.stabilityRatio;
+  const stabilityS = clicked.stabilityRatio;
+  const stabilityR = clicked.stabilityR;
+  const stabilityG = clicked.stabilityG;
 
   let stabilityHtml = '';
-  if (projections.length > 0 && closest && secondClosest && stabilityRatio !== undefined) {
+  if (projections.length > 0 && closest && secondClosest && stabilityS !== undefined) {
     const formatTowerPair = (a: { type: string }, b: { type: string }) => {
       const nameA = a.type.charAt(0).toUpperCase() + a.type.slice(1);
       const nameB = b.type.charAt(0).toUpperCase() + b.type.slice(1);
@@ -602,10 +797,18 @@ function updateSimulatorFieldDisplay(simulatorModeRef: SimulatorMode): void {
     const closestPair = formatTowerPair(closest.towerA, closest.towerB);
     const secondClosestPair = formatTowerPair(secondClosest.towerA, secondClosest.towerB);
 
+    // Use pre-computed values from clicked point
+    const variance = state.simulatorHyperparameters.stabilityGaussianVariance;
+    const winner = (stabilityG ?? 0) > (stabilityR ?? 0) ? 'G' : 'R';
+
     stabilityHtml = `
       <h4>Stability (${projections.length} projections)</h4>
       <div class="stability-info">
-        <div class="stability-ratio">Ratio: <strong>${stabilityRatio.toFixed(3)}</strong></div>
+        <div class="stability-ratio">S = max(R,G): <strong>${stabilityS.toFixed(3)}</strong> (${winner})</div>
+        <div class="stability-terms">
+          <span>R = ${(stabilityR ?? 0).toFixed(3)}</span>
+          <span>G = ${(stabilityG ?? 0).toFixed(3)} (σ=${variance})</span>
+        </div>
         <div class="projection-item closest">
           <span class="projection-label">Closest:</span>
           <span class="projection-details">${closestPair} @ ${Math.round(closest.distance)}px</span>

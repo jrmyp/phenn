@@ -15,6 +15,7 @@ import {
   SimulatorClickedPoint,
   SimulatorLayerType,
   RefinementPoint,
+  SettlementViewMode,
 } from '../types';
 import { TOWER_SIZE, SETTLEMENT_SIZE, SIMULATOR_DEFAULTS } from '../config/constants';
 
@@ -40,10 +41,11 @@ function createInitialState(): AppStateData {
       roads: [],
     },
     pendingEdit: null,
-    isBackgroundVisible: true,
+    isBackgroundVisible: false,
     selectedTowerType: 'aquagen',
     selectedTowerPower: TOWER_SIZE.defaultPower,
     selectedSettlementSize: SETTLEMENT_SIZE.defaultSize,
+    settlementViewMode: 'default',
     selectedRoadSafe: true,
     pendingRoadStartId: null,
     selectedTowerId: null,
@@ -383,6 +385,9 @@ export class AppState {
 
       case 'SET_SETTLEMENT_SIZE':
         return { ...state, selectedSettlementSize: payload as number };
+
+      case 'SET_SETTLEMENT_VIEW_MODE':
+        return { ...state, settlementViewMode: payload as SettlementViewMode };
 
       // Road actions
       case 'ADD_ROAD': {
